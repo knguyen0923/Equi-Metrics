@@ -13,7 +13,7 @@ export default function About() {
           
           <div style={{ color: 'var(--text-muted)', lineHeight: '1.6' }}>
             <p>
-              Equi-Metrics started as an 8-week machine learning project aimed at predicting horse race 
+              Equi-Metrics started as a capstone machine learning project aimed at predicting horse race 
               outcomes. By aggregating global racing data via the Racing API, we engineered custom features 
               including <strong>Elo ratings</strong> and complex <strong>pedigree statistics</strong> (tracking Sire, Damsire, and maternal lines).
             </p>
