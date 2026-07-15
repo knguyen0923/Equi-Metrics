@@ -1,49 +1,8 @@
-const modelMetrics = [
-  {
-    model: "XGBRanker",
-    top1: "60.89%",
-    ndcg3: "81.96%",
-    ndcg5: "83.05%",
-    ndcg10: "84.75%",
-  },
-  {
-    model: "CatBoost Ranker",
-    top1: "46.97%",
-    ndcg3: "83.17%",
-    ndcg5: "84.23%",
-    ndcg10: "85.62%",
-  },
-  {
-    model: "LightGBM Ranker",
-    top1: "45.80%",
-    ndcg3: "52.84%",
-    ndcg5: "54.59%",
-    ndcg10: "55.17%",
-  },
-  {
-    model: "Neural Network Ranker",
-    top1: "52.01%",
-    ndcg3: "76.34%",
-    ndcg5: "77.84%",
-    ndcg10: "81.24%",
-  },
-  {
-    model: "Random Forest Ranker",
-    top1: "58.85%",
-    ndcg3: "48.63%",
-    ndcg5: "49.45%",
-    ndcg10: "49.53%",
-  },
-  {
-    model: "Decision Tree Ranker",
-    top1: "60.87%",
-    ndcg3: "48.38%",
-    ndcg5: "49.33%",
-    ndcg10: "49.43%",
-  },
-];
+// 3. Stats are now pulled from the `metrics` prop, allowing them to be calculated on the fly in the parent component.
 
-export default function AdvancedStats() {
+export default function AdvancedStats({ metrics, selectedModel }) {
+  if (!metrics) return null; // Don't render if there's no data yet
+
   return (
     <section className="advanced-section">
       <div className="section-heading">
@@ -90,9 +49,18 @@ export default function AdvancedStats() {
           </thead>
 
           <tbody>
-            {modelMetrics.map((row) => (
-              <tr key={row.model}>
-                <td>{row.model}</td>
+            {metrics.map((row) => (
+              <tr 
+                key={row.model} 
+                // Highlight the row if it matches the model the user selected in the dropdown!
+                style={{ 
+                  backgroundColor: row.model === selectedModel ? 'var(--bg-card-soft)' : 'transparent',
+                  borderLeft: row.model === selectedModel ? '3px solid var(--orange)' : 'none'
+                }}
+              >
+                <td style={{ fontWeight: row.model === selectedModel ? 'bold' : 'normal', color: row.model === selectedModel ? 'var(--text-main)' : 'var(--text-muted)' }}>
+                  {row.model}
+                </td>
                 <td>{row.top1}</td>
                 <td>{row.ndcg3}</td>
                 <td>{row.ndcg5}</td>

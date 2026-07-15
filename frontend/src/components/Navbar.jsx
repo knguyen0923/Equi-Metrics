@@ -1,3 +1,5 @@
+import { Link } from "react-router-dom";
+
 export default function Navbar() {
   return (
     <header className="navbar">
@@ -10,11 +12,12 @@ export default function Navbar() {
       </div>
 
       <nav>
-        <a href="/">Home</a>
-        <a href="/history">History</a>
-        <a href="/about">About Us</a>
-        <a href="/feedback">Feedback</a>
-        <a className="login-link" href="/login">Login</a>
+        {/* Link components handle internal routing without browser refreshes */}
+        <Link to="/">Home</Link>
+        <Link to="/history">History</Link>
+        <Link to="/about">About Us</Link>
+        {/* Login link keeps its class for specific styling */}
+        <Link className="login-link" to="/login">Login</Link>
       </nav>
     </header>
   );
