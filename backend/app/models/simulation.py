@@ -1,55 +1,62 @@
-# Pydantic schemas for everything under /simulations, plus the enums that
-# pin the simulation form's dropdown values server-side. The frontend
-# dropdowns aren't a security boundary — a client can POST anything — so
-# these Enum fields make FastAPI reject unrecognized values with a 422
-# instead of silently accepting them.
+# Pydantic schemas for everything under /simulations.
 #
 # Field names in HorseResult/SimulationRunResponse are deliberately
 # camelCase (not the usual Python snake_case) so they match the frontend's
 # JSON contract exactly, without needing Pydantic alias configuration.
-from enum import Enum
 from typing import Optional
 
 from pydantic import BaseModel
 
 
-class Country(str, Enum):
-    GB = "GB"
-    FR = "FR"
-    IE = "IE"
-    US = "US"
-    HK = "HK"
-
-
-class Course(str, Enum):
-    # Values match the <option value="..."> in SimulationSetup.jsx, not the
-    # human-readable labels shown in the dropdown (e.g. "Belmont Park").
-    ASCOT = "Ascot"
-    BELMONT = "Belmont"
-    SANTA_ANITA = "SantaAnita"
-    CHURCHILL = "Churchill"
-
-
-class TrackCondition(str, Enum):
-    FIRM = "Firm"
-    GOOD = "Good"
-    SOFT = "Soft"
-    HEAVY = "Heavy"
-
-
-class ModelName(str, Enum):
-    XGBRANKER = "XGBRanker"
-    CATBOOST_RANKER = "CatBoost Ranker"
-    LIGHTGBM_RANKER = "LightGBM Ranker"
-    NEURAL_NETWORK_RANKER = "Neural Network Ranker"
+class RaceOption(BaseModel):
+    # One entry in GET /simulations/races — a real historical race the user
+    # can pick to run inference against (see app/ml/registry.py).
+    raceKey: str
+    course: str
+    date: str
 
 
 class SimulationRequest(BaseModel):
-    # Body of POST /simulations/run.
-    country: Country
-    course: Course
-    condition: TrackCondition
-    model: ModelName
+    # Body of POST /simulations/run. race_key must be one returned by
+    # GET /simulations/races — there's no live race-card data source, so
+    # arbitrary/future races aren't supported (see app/ml/registry.py).
+    race_key: str
+
+
+class RaceContextOptions(BaseModel):
+    # Response of GET /simulations/race-context-options — the category
+    # values the model actually recognizes, for populating the custom race
+    # builder's dropdowns (see app/ml/registry.py's predict_custom).
+    courses: list[str]
+    goings: list[str]
+    classes: list[str]
+    regions: list[str]
+    surfaces: list[str]
+    distanceCategories: list[str]
+
+
+class HorseProfile(BaseModel):
+    # One entry in GET /simulations/horses — a real horse the user can add
+    # to a custom race, seeded from that horse's most recent real appearance.
+    profileId: int
+    horse: str
+    lastCourse: str
+    lastDate: str
+    age: Optional[float] = None
+    jockey: Optional[str] = None
+    trainer: Optional[str] = None
+    officialRating: Optional[float] = None
+
+
+class CustomRaceRequest(BaseModel):
+    # Body of POST /simulations/custom-run.
+    course: str
+    going: str
+    race_class: str
+    region: str
+    surface: str
+    distance_category: str
+    profile_ids: list[int]
 
 
 class HorseResult(BaseModel):
@@ -67,7 +74,7 @@ class SimulationRunResponse(BaseModel):
     id: Optional[str] = None  # Mongo _id of the saved history row; None if not saved (anonymous run)
     date: str
     results: list[HorseResult]
-    isPlaceholder: bool = True  # always true today — see ml/registry.py
+    isPlaceholder: bool = False  # kept for frontend compat; always false now — see ml/registry.py
     saved: bool  # whether this run was tied to a logged-in user and written to history
 
 
@@ -79,6 +86,16 @@ class HistoryItem(BaseModel):
     track: str
     model: str
     winner: str
+
+
+class HistoryDetail(BaseModel):
+    # Response of GET /simulations/history/{id} — the full ranked breakdown
+    # behind one history row, shown when a user clicks into it.
+    id: str
+    date: str
+    track: str
+    model: str
+    results: list[HorseResult]
 
 
 class ModelStat(BaseModel):

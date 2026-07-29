@@ -79,5 +79,14 @@ export const api = {
   // this call without one too — it just won't be saved to history.
   runSimulation: (payload) => request("/simulations/run", { method: "POST", auth: true, body: payload }),
   getHistory: () => request("/simulations/history", { auth: true }),
+  getHistoryDetail: (id) => request(`/simulations/history/${id}`, { auth: true }),
   getStats: () => request("/simulations/stats"),
+  // Real historical races the model can run against (see backend/app/ml/registry.py).
+  getRaces: (search = "") => request(`/simulations/races?search=${encodeURIComponent(search)}&limit=20`),
+  getRaceCount: () => request("/simulations/races/count"),
+  // Custom race builder: real horses + the race-context categories the
+  // model actually recognizes (see backend/app/ml/registry.py's predict_custom).
+  getRaceContextOptions: () => request("/simulations/race-context-options"),
+  searchHorses: (search = "") => request(`/simulations/horses?search=${encodeURIComponent(search)}&limit=20`),
+  runCustomSimulation: (payload) => request("/simulations/custom-run", { method: "POST", auth: true, body: payload }),
 };

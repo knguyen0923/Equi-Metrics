@@ -1,8 +1,23 @@
-// 3. Stats are now pulled from the `metrics` prop, allowing them to be calculated on the fly in the parent component.
-// `metrics` is fetched by the parent (SimulationSetup) from GET /simulations/stats.
+// Stats are pulled from the `metrics` prop (GET /simulations/stats) and
+// `totalRaces` (GET /simulations/races/count), both fetched by the parent
+// (SimulationSetup), so the headline numbers stay in sync with whatever the
+// backend actually reports instead of drifting from a hardcoded snapshot.
 
-export default function AdvancedStats({ metrics, selectedModel }) {
-  if (!metrics) return null; // Don't render if there's no data yet (still loading, or the fetch failed)
+function parsePercent(value) {
+  return parseFloat(String(value).replace('%', ''));
+}
+
+export default function AdvancedStats({ metrics, selectedModel, totalRaces }) {
+  // Covers both "hasn't loaded yet" (null) and "loaded but empty" (an
+  // empty array) — metrics[0] would otherwise be undefined and crash the
+  // reduce() below.
+  if (!metrics || metrics.length === 0) return null;
+
+  const activeModelStats = metrics.find((row) => row.model === selectedModel);
+  const bestNdcg10 = metrics.reduce(
+    (best, row) => (parsePercent(row.ndcg10) > parsePercent(best.ndcg10) ? row : best),
+    metrics[0]
+  );
 
   return (
     <section className="advanced-section">
@@ -15,28 +30,29 @@ export default function AdvancedStats({ metrics, selectedModel }) {
         </p>
       </div>
 
-      {/* These 4 headline numbers are still hardcoded rather than derived
-          from `metrics` — they happen to match the current stats, but
-          won't update automatically if the underlying numbers ever change. */}
       <div className="stat-card-grid">
+        {activeModelStats && (
+          <>
+            <article className="stat-card">
+              <h3>{activeModelStats.top1}</h3>
+              <p>{activeModelStats.model} Top-1 Accuracy</p>
+            </article>
+
+            <article className="stat-card">
+              <h3>{activeModelStats.ndcg10}</h3>
+              <p>{activeModelStats.model} NDCG@10</p>
+            </article>
+          </>
+        )}
+
         <article className="stat-card">
-          <h3>60.89%</h3>
-          <p>XGBRanker Top-1 Accuracy</p>
+          <h3>{bestNdcg10.ndcg10}</h3>
+          <p>Best NDCG@10 — {bestNdcg10.model}</p>
         </article>
 
         <article className="stat-card">
-          <h3>85.62%</h3>
-          <p>Best NDCG@10 — CatBoost Ranker</p>
-        </article>
-
-        <article className="stat-card">
-          <h3>52.01%</h3>
-          <p>Neural Network Top-1 Accuracy</p>
-        </article>
-
-        <article className="stat-card">
-          <h3>1,495</h3>
-          <p>Valid single-winner test races</p>
+          <h3>{totalRaces != null ? totalRaces.toLocaleString() : "—"}</h3>
+          <p>Real historical races available to simulate</p>
         </article>
       </div>
 

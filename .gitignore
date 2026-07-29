@@ -10,3 +10,9 @@ venv/
 
 # Editor / OS
 .DS_Store
+
+# Raw ML training exports (large, not meant for git — see
+# backend/scripts/build_ml_data.py, which trims these into
+# backend/app/ml/data/ which IS committed)
+ml-models/*.csv
+ml-models/*.pkl

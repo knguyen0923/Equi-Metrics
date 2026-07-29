@@ -4,8 +4,9 @@
 #   uvicorn app.main:app --host 0.0.0.0 --port $PORT
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
@@ -34,6 +35,16 @@ app = FastAPI(title="Equi-Metrics API", lifespan=lifespan)
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 app.add_middleware(SlowAPIMiddleware)
+
+
+@app.exception_handler(ValueError)
+async def value_error_handler(request: Request, exc: ValueError):
+    # Bad user input caught deep in a service layer (e.g. an unknown
+    # race_key or an invalid custom-race horse selection — see
+    # app/ml/registry.py) raises a plain ValueError; this is the one place
+    # that turns any of them into a 400, so routers don't each need their
+    # own try/except to avoid a raw 500.
+    return JSONResponse(status_code=400, content={"detail": str(exc)})
 
 app.add_middleware(
     CORSMiddleware,

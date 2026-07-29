@@ -1,0 +1,4 @@
+-r requirements.txt
+
+# Test-only dependencies — not needed to run the app itself, only to test it.
+pytest>=8.3
