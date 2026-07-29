@@ -1,15 +1,9 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Navbar from "../components/Navbar";
 import Results from "./Results";
 import AdvancedStats from "./AdvancedStats";
-
-// 3. Advanced Stats Data (Moved here to act as state, eventually this will be fetched/calculated on the fly)
-const defaultStats = [
-  { model: "XGBRanker", top1: "60.89%", ndcg3: "81.96%", ndcg5: "83.05%", ndcg10: "84.75%" },
-  { model: "CatBoost Ranker", top1: "46.97%", ndcg3: "83.17%", ndcg5: "84.23%", ndcg10: "85.62%" },
-  { model: "LightGBM Ranker", top1: "45.80%", ndcg3: "52.84%", ndcg5: "54.59%", ndcg10: "55.17%" },
-  { model: "Neural Network Ranker", top1: "52.01%", ndcg3: "76.34%", ndcg5: "77.84%", ndcg10: "81.24%" },
-];
+import { useAuth } from "../context/useAuth";
+import { api } from "../lib/api";
 
 export default function SimulationSetup() {
   // --- State for the Form ---
@@ -20,27 +14,48 @@ export default function SimulationSetup() {
 
   // --- State for the Results & Stats ---
   const [simulationResults, setSimulationResults] = useState(null);
-  const [simulationStats, setSimulationStats] = useState(defaultStats);
+  const [isPlaceholder, setIsPlaceholder] = useState(false);
+  const [simulationStats, setSimulationStats] = useState(null);
   const [isSimulating, setIsSimulating] = useState(false);
+  const [statusMessage, setStatusMessage] = useState("");
+  const [error, setError] = useState("");
 
-  // 1. Eventually this function will call your actual local models/API.
-  const handleRunSimulation = () => {
+  const { user } = useAuth();
+
+  // Model-evaluation metrics now live on the backend (GET /simulations/stats)
+  // instead of being hardcoded here, so they only need to change in one place.
+  useEffect(() => {
+    api.getStats().then(setSimulationStats).catch(() => {});
+  }, []);
+
+  async function handleRunSimulation() {
     setIsSimulating(true);
+    setError("");
+    setStatusMessage("Running simulation...");
 
-    // Simulating a network request / model prediction delay
-    setTimeout(() => {
-      // Mocking dynamic data generation based on the selected model
-      const mockDynamicResults = [
-        { rank: 1, horse: "Goldship", predictedRank: 1, probability: 72, odds: "4-1", model: selectedModel },
-        { rank: 2, horse: "The Hawkstonian", predictedRank: 2, probability: 48, odds: "6-1", model: selectedModel },
-        { rank: 3, horse: "Skibidi Rizz", predictedRank: 4, probability: 31, odds: "8-1", model: selectedModel },
-      ];
-      
-      setSimulationResults(mockDynamicResults);
-      // Here you could also update `setSimulationStats` if the stats change per simulation
+    // Render's free tier spins the API down after inactivity, so the first
+    // request after idle can take up to ~60s to wake it back up. Only show
+    // this message if the request is actually taking a while, so it doesn't
+    // flash on every normal, fast request.
+    const wakeupTimer = setTimeout(() => {
+      setStatusMessage("Waking up the server... this can take up to a minute on first load.");
+    }, 4000);
+
+    try {
+      // Backend returns synthetic-but-labeled results today (see
+      // backend/app/ml/registry.py) — isPlaceholder tells Results whether
+      // to show the "preview data" badge.
+      const response = await api.runSimulation({ country, course, condition, model: selectedModel });
+      setSimulationResults(response.results);
+      setIsPlaceholder(response.isPlaceholder);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      clearTimeout(wakeupTimer);
       setIsSimulating(false);
-    }, 800);
-  };
+      setStatusMessage("");
+    }
+  }
 
   return (
     <>
@@ -76,6 +91,9 @@ export default function SimulationSetup() {
               <option value="HK">HK</option>
             </select>
 
+            {/* option values (e.g. "SantaAnita") are what's sent to the API;
+                labels (e.g. "Santa Anita") are just for display — must match
+                backend/app/models/simulation.py's Course enum */}
             <select value={course} onChange={(e) => setCourse(e.target.value)}>
               <option value="">Select race course</option>
               <option value="Ascot">Ascot</option>
@@ -99,14 +117,27 @@ export default function SimulationSetup() {
               <option value="Neural Network Ranker">Neural Network Ranker</option>
             </select>
 
-            <button onClick={handleRunSimulation} disabled={isSimulating}>
+            {/* Disabled until all three race fields are chosen, so the
+                request can't be submitted with blank values */}
+            <button onClick={handleRunSimulation} disabled={isSimulating || !country || !course || !condition}>
               {isSimulating ? "Running..." : "Run Simulation"}
             </button>
           </div>
+
+          {statusMessage && <p style={{ color: 'var(--text-muted)', marginTop: '8px' }}>{statusMessage}</p>}
+          {error && <p style={{ color: 'var(--orange)', marginTop: '8px' }}>{error}</p>}
+          {/* Simulations run without logging in, but only get saved to
+              history if the user was logged in at the time — see
+              backend/app/routers/simulations.py's run_simulation */}
+          {!user && simulationResults && (
+            <p style={{ color: 'var(--text-muted)', marginTop: '8px' }}>
+              Log in to save this result to your history.
+            </p>
+          )}
         </section>
 
         {/* Passing the dynamic state down to the child components as props */}
-        <Results data={simulationResults} />
+        <Results data={simulationResults} isPlaceholder={isPlaceholder} />
         <AdvancedStats metrics={simulationStats} selectedModel={selectedModel} />
       </main>
     </>

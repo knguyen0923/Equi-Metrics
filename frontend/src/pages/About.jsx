@@ -1,5 +1,6 @@
 import Navbar from "../components/Navbar"; // Adjust import path if needed
 
+// Static marketing/info copy about the project — no data fetching, no state.
 export default function About() {
   return (
     <>

@@ -1,7 +1,8 @@
 // 3. Stats are now pulled from the `metrics` prop, allowing them to be calculated on the fly in the parent component.
+// `metrics` is fetched by the parent (SimulationSetup) from GET /simulations/stats.
 
 export default function AdvancedStats({ metrics, selectedModel }) {
-  if (!metrics) return null; // Don't render if there's no data yet
+  if (!metrics) return null; // Don't render if there's no data yet (still loading, or the fetch failed)
 
   return (
     <section className="advanced-section">
@@ -14,6 +15,9 @@ export default function AdvancedStats({ metrics, selectedModel }) {
         </p>
       </div>
 
+      {/* These 4 headline numbers are still hardcoded rather than derived
+          from `metrics` — they happen to match the current stats, but
+          won't update automatically if the underlying numbers ever change. */}
       <div className="stat-card-grid">
         <article className="stat-card">
           <h3>60.89%</h3>

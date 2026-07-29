@@ -7,7 +7,10 @@ const raceResults = [
 ];
 */
 
-export default function Results({ data }) {
+// `data` is the array of ranked horses from a simulation run (or null if
+// none has run yet); `isPlaceholder` flags whether those results are the
+// backend's synthetic stand-in data rather than a real trained model.
+export default function Results({ data, isPlaceholder }) {
   return (
     <section className="results-section">
       <div className="section-heading">
@@ -17,6 +20,22 @@ export default function Results({ data }) {
           Results are ranked using the selected machine learning model and shown
           by predicted finishing order.
         </p>
+        {/* Shown until real model inference replaces backend/app/ml/registry.py */}
+        {data && isPlaceholder && (
+          <p
+            style={{
+              display: 'inline-block',
+              marginTop: '8px',
+              padding: '4px 10px',
+              borderRadius: '999px',
+              fontSize: '0.75rem',
+              border: '1px solid var(--border)',
+              color: 'var(--text-muted)',
+            }}
+          >
+            Preview data — real model wiring pending
+          </p>
+        )}
       </div>
 
       {/* If data is null (simulation hasn't run yet), show a prompt */}
