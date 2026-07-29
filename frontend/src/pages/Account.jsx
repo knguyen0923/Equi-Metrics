@@ -48,14 +48,18 @@ export default function Account() {
           </div>
 
           <form className="form-grid" style={{ gridTemplateColumns: '1fr', gap: '8px' }} onSubmit={handleSubmit}>
+            <label htmlFor="account-current-password" className="sr-only">Current password</label>
             <input
+              id="account-current-password"
               type="password"
               placeholder="Current password"
               required
               value={currentPassword}
               onChange={(e) => setCurrentPassword(e.target.value)}
             />
+            <label htmlFor="account-new-password" className="sr-only">New password</label>
             <input
+              id="account-new-password"
               type="password"
               placeholder="New password"
               required

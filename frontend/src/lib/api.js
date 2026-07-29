@@ -29,11 +29,21 @@ async function request(path, { method = "GET", body, auth = false } = {}) {
     if (token) headers.Authorization = `Bearer ${token}`;
   }
 
-  const response = await fetch(`${API_URL}${path}`, {
-    method,
-    headers,
-    body: body ? JSON.stringify(body) : undefined,
-  });
+  let response;
+  try {
+    response = await fetch(`${API_URL}${path}`, {
+      method,
+      headers,
+      body: body ? JSON.stringify(body) : undefined,
+    });
+  } catch {
+    // fetch itself throws (rather than resolving with a response) when the
+    // request never reaches a server at all — backend down, no network,
+    // CORS rejection. Without this, the raw browser error ("Failed to
+    // fetch") surfaces directly in the UI instead of something a user can
+    // actually act on.
+    throw new Error("Couldn't reach the server. Check your connection and try again.");
+  }
 
   if (response.status === 401 && auth) {
     clearToken();

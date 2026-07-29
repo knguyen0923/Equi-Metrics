@@ -5,18 +5,33 @@
 # package — motor is in maintenance-only mode and heading toward end of
 # life, while pymongo's async client is the actively maintained replacement
 # with the same async/await shape.
+import logging
+
 from pymongo import AsyncMongoClient
+from pymongo.asynchronous.collection import AsyncCollection
 
 from app.config import settings
+
+logger = logging.getLogger(__name__)
 
 client: AsyncMongoClient = AsyncMongoClient(settings.mongodb_uri)
 db = client[settings.mongodb_db_name]
 
-# Raw collection handles. Routers import these directly and query them with
-# plain dicts — there's no ORM/ODM layer, since the schema is small enough
-# that one wasn't worth the extra abstraction.
+# Raw collection handles. Routers/dependencies reach these only through the
+# get_*_collection() functions below (via FastAPI's Depends) rather than
+# importing the names directly — that way a test only has to monkeypatch
+# these two module attributes, not every module that would otherwise bind
+# its own local name via `from app.db import ...`.
 users_collection = db["users"]
 simulations_collection = db["simulations"]
+
+
+def get_users_collection() -> AsyncCollection:
+    return users_collection
+
+
+def get_simulations_collection() -> AsyncCollection:
+    return simulations_collection
 
 
 async def init_indexes() -> None:
@@ -36,4 +51,4 @@ async def init_indexes() -> None:
         await users_collection.create_index("reset_token_hash", sparse=True)
         await simulations_collection.create_index([("user_id", 1), ("created_at", -1)])
     except Exception as exc:  # best-effort at boot; don't block startup on a slow/unreachable Atlas cluster
-        print(f"[db] index creation skipped: {exc}")
+        logger.warning("Index creation skipped: %s", exc)

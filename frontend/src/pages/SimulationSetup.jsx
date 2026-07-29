@@ -1,76 +1,17 @@
 import { useEffect, useState } from "react";
 import Navbar from "../components/Navbar";
+import RealRaceSetup from "../components/RealRaceSetup";
+import CustomRaceSetup from "../components/CustomRaceSetup";
 import Results from "./Results";
 import AdvancedStats from "./AdvancedStats";
 import { useAuth } from "../context/useAuth";
+import { useDebouncedSearch } from "../lib/useDebouncedSearch";
 import { api } from "../lib/api";
 
 // Only XGBRanker was ever exported as a loadable model file (see
 // backend/app/ml/registry.py) — there's no dropdown for it since it's the
 // only option, but AdvancedStats still uses this to highlight its row.
 const ACTIVE_MODEL = "XGBRanker";
-
-const dropdownStyle = {
-  position: "absolute",
-  top: "44px",
-  left: 0,
-  right: 0,
-  zIndex: 10,
-  background: "var(--bg-card, #fff)",
-  border: "1px solid var(--border)",
-  borderRadius: "var(--radius-md)",
-  maxHeight: "220px",
-  overflowY: "auto",
-  listStyle: "none",
-  margin: 0,
-  padding: "4px 0",
-};
-
-const dropdownItemStyle = {
-  width: "100%",
-  textAlign: "left",
-  padding: "8px 12px",
-  background: "none",
-  border: "none",
-  cursor: "pointer",
-  display: "flex",
-  justifyContent: "space-between",
-  gap: "8px",
-};
-
-// Muted, smaller secondary text next to a course/horse name — the race
-// date, a horse's last-seen course, its jockey.
-const mutedSmallText = { fontSize: "0.75em", color: "var(--text-muted)" };
-
-// A borderless, inline "ghost" action button — "Change" on the selected
-// race, "Remove" on a selected horse.
-const ghostButtonStyle = {
-  marginLeft: "auto",
-  background: "none",
-  border: "none",
-  cursor: "pointer",
-  color: "var(--text-muted)",
-};
-
-// Debounces `term` and calls `fetchFn(term)` 300ms after it stops
-// changing, skipping entirely while `enabled` is false (e.g. the other
-// mode is active). Shared by the real-race and horse searches below —
-// only the term/fetch function differ between them. Returns a
-// [results, setResults] pair (like useState) so callers can still clear
-// the list immediately on selection, without waiting for the next debounce.
-function useDebouncedSearch(term, enabled, fetchFn, delay = 300) {
-  const [results, setResults] = useState([]);
-
-  useEffect(() => {
-    if (!enabled) return;
-    const timer = setTimeout(() => {
-      fetchFn(term).then(setResults).catch(() => {});
-    }, delay);
-    return () => clearTimeout(timer);
-  }, [term, enabled, fetchFn, delay]);
-
-  return [results, setResults];
-}
 
 export default function SimulationSetup() {
   const [mode, setMode] = useState("real"); // "real" | "custom"
@@ -80,8 +21,14 @@ export default function SimulationSetup() {
   const [selectedRace, setSelectedRace] = useState(null);
   // Races are real historical races the model was never trained on (see
   // backend/app/ml/registry.py), not arbitrary course/condition combos, so
-  // users search/pick instead of configuring one.
-  const [raceOptions, setRaceOptions] = useDebouncedSearch(searchTerm, mode === "real", api.getRaces);
+  // users search/pick instead of configuring one. Only fetches once the
+  // user has actually typed something, rather than showing an unfiltered
+  // default list of the most recent races.
+  const [raceOptions, setRaceOptions] = useDebouncedSearch(
+    searchTerm,
+    mode === "real" && searchTerm.length > 0,
+    api.getRaces
+  );
 
   // --- State for the custom race builder ---
   const [contextOptions, setContextOptions] = useState(null);
@@ -115,6 +62,11 @@ export default function SimulationSetup() {
     api.getRaceContextOptions().then(setContextOptions).catch(() => {});
   }, []);
 
+  function handleSearchTermChange(value) {
+    setSearchTerm(value);
+    setSelectedRace(null);
+  }
+
   function handleSelectRace(race) {
     setSelectedRace(race);
     setRaceOptions([]);
@@ -123,6 +75,10 @@ export default function SimulationSetup() {
   function handleClearRace() {
     setSelectedRace(null);
     setSearchTerm("");
+  }
+
+  function handleContextChange(field, value) {
+    setContext({ ...context, [field]: value });
   }
 
   function handleAddHorse(horse) {
@@ -227,181 +183,32 @@ export default function SimulationSetup() {
           </div>
 
           {mode === "real" ? (
-            <div className="form-grid" style={{ position: "relative" }}>
-              {selectedRace ? (
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "8px",
-                    border: "1px solid var(--border)",
-                    borderRadius: "var(--radius-md)",
-                    padding: "0 12px",
-                  }}
-                >
-                  <span>{selectedRace.course}</span>
-                  <span style={mutedSmallText}>{selectedRace.date}</span>
-                  <button
-                    type="button"
-                    onClick={handleClearRace}
-                    aria-label="Change race"
-                    style={ghostButtonStyle}
-                  >
-                    Change
-                  </button>
-                </div>
-              ) : (
-                <input
-                  placeholder="Search race by course..."
-                  value={searchTerm}
-                  onChange={(e) => {
-                    setSearchTerm(e.target.value);
-                    setSelectedRace(null);
-                  }}
-                />
-              )}
-
-              {!selectedRace && raceOptions.length > 0 && (
-                <ul style={dropdownStyle}>
-                  {raceOptions.map((race) => (
-                    <li key={race.raceKey}>
-                      <button type="button" onClick={() => handleSelectRace(race)} style={dropdownItemStyle}>
-                        <span>{race.course}</span>
-                        <span style={mutedSmallText}>{race.date}</span>
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              )}
-
-              {/* Only XGBRanker was ever exported as a loadable model file (see
-                  backend/app/ml/registry.py) — the others are shown greyed out
-                  so it's clear more models are planned, not just missing. */}
-              <select value={ACTIVE_MODEL} disabled title="Only XGBRanker is available right now">
-                <option value="XGBRanker">XGBRanker</option>
-                <option value="CatBoost Ranker">CatBoost Ranker (Coming soon)</option>
-                <option value="LightGBM Ranker">LightGBM Ranker (Coming soon)</option>
-                <option value="Neural Network Ranker">Neural Network Ranker (Coming soon)</option>
-              </select>
-
-              {/* Disabled until a real race has been picked from the search results */}
-              <button onClick={handleRunSimulation} disabled={isSimulating || !selectedRace}>
-                {isSimulating ? "Running..." : "Run Simulation"}
-              </button>
-            </div>
+            <RealRaceSetup
+              activeModel={ACTIVE_MODEL}
+              searchTerm={searchTerm}
+              onSearchTermChange={handleSearchTermChange}
+              selectedRace={selectedRace}
+              onSelectRace={handleSelectRace}
+              onClearRace={handleClearRace}
+              raceOptions={raceOptions}
+              isSimulating={isSimulating}
+              onRunSimulation={handleRunSimulation}
+            />
           ) : (
-            <div>
-              <div className="form-grid">
-                <select value={context.course} onChange={(e) => setContext({ ...context, course: e.target.value })}>
-                  <option value="">Course</option>
-                  {contextOptions?.courses.map((c) => (
-                    <option key={c} value={c}>{c}</option>
-                  ))}
-                </select>
-
-                <select value={context.going} onChange={(e) => setContext({ ...context, going: e.target.value })}>
-                  <option value="">Going</option>
-                  {contextOptions?.goings.map((g) => (
-                    <option key={g} value={g}>{g}</option>
-                  ))}
-                </select>
-
-                <select value={context.race_class} onChange={(e) => setContext({ ...context, race_class: e.target.value })}>
-                  <option value="">Class</option>
-                  {contextOptions?.classes.map((c) => (
-                    <option key={c} value={c}>{c}</option>
-                  ))}
-                </select>
-
-                <select value={context.region} onChange={(e) => setContext({ ...context, region: e.target.value })}>
-                  <option value="">Region</option>
-                  {contextOptions?.regions.map((r) => (
-                    <option key={r} value={r}>{r}</option>
-                  ))}
-                </select>
-
-                <select value={context.surface} onChange={(e) => setContext({ ...context, surface: e.target.value })}>
-                  <option value="">Surface</option>
-                  {contextOptions?.surfaces.map((s) => (
-                    <option key={s} value={s}>{s}</option>
-                  ))}
-                </select>
-
-                <select
-                  value={context.distance_category}
-                  onChange={(e) => setContext({ ...context, distance_category: e.target.value })}
-                >
-                  <option value="">Distance</option>
-                  {contextOptions?.distanceCategories.map((d) => (
-                    <option key={d} value={d}>{d}</option>
-                  ))}
-                </select>
-              </div>
-
-              <div style={{ position: "relative", marginTop: "16px" }}>
-                <input
-                  placeholder="Search horses by name to add to the field..."
-                  value={horseSearchTerm}
-                  onChange={(e) => setHorseSearchTerm(e.target.value)}
-                />
-
-                {horseOptions.length > 0 && (
-                  <ul style={dropdownStyle}>
-                    {horseOptions.map((horse) => (
-                      <li key={horse.profileId}>
-                        <button type="button" onClick={() => handleAddHorse(horse)} style={dropdownItemStyle}>
-                          <span>{horse.horse}</span>
-                          <span style={mutedSmallText}>
-                            last: {horse.lastCourse} — {horse.lastDate}
-                          </span>
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-
-              {selectedHorses.length > 0 && (
-                <ul style={{ listStyle: "none", margin: "12px 0 0", padding: 0 }}>
-                  {selectedHorses.map((horse) => (
-                    <li
-                      key={horse.profileId}
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: "8px",
-                        border: "1px solid var(--border)",
-                        borderRadius: "var(--radius-md)",
-                        padding: "6px 12px",
-                        marginTop: "6px",
-                      }}
-                    >
-                      <span>{horse.horse}</span>
-                      <span style={mutedSmallText}>
-                        {horse.jockey ? `Jockey: ${horse.jockey}` : ""}
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => handleRemoveHorse(horse.profileId)}
-                        aria-label={`Remove ${horse.horse}`}
-                        style={ghostButtonStyle}
-                      >
-                        Remove
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              )}
-
-              <p style={{ color: "var(--text-muted)", marginTop: "8px", fontSize: "0.85em" }}>
-                Add at least 3 horses. Each horse's ratings/history come from their own real
-                past races; how they rank against each other is recomputed for this field.
-              </p>
-
-              <button onClick={handleRunCustomSimulation} disabled={isSimulating || !canRunCustom} style={{ marginTop: "12px" }}>
-                {isSimulating ? "Running..." : "Run Simulation"}
-              </button>
-            </div>
+            <CustomRaceSetup
+              contextOptions={contextOptions}
+              context={context}
+              onContextChange={handleContextChange}
+              horseSearchTerm={horseSearchTerm}
+              onHorseSearchTermChange={setHorseSearchTerm}
+              horseOptions={horseOptions}
+              onAddHorse={handleAddHorse}
+              selectedHorses={selectedHorses}
+              onRemoveHorse={handleRemoveHorse}
+              canRunCustom={canRunCustom}
+              isSimulating={isSimulating}
+              onRunCustomSimulation={handleRunCustomSimulation}
+            />
           )}
 
           {statusMessage && <p style={{ color: 'var(--text-muted)', marginTop: '8px' }}>{statusMessage}</p>}
@@ -417,7 +224,7 @@ export default function SimulationSetup() {
         </section>
 
         {/* Every result is real model output now (see backend/app/ml/registry.py) */}
-        <Results data={simulationResults} isPlaceholder={false} />
+        <Results data={simulationResults} />
         <AdvancedStats metrics={simulationStats} selectedModel={ACTIVE_MODEL} totalRaces={totalRaces} />
       </main>
     </>

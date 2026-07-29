@@ -26,6 +26,21 @@ const SAMPLE_HISTORY = [
   { id: "sim1", date: "2026-07-29", track: "Leicester", model: "XGBRanker", winner: "Coton Star (FR)" },
 ];
 
+const SAMPLE_HISTORY_TWO_ROWS = [
+  ...SAMPLE_HISTORY,
+  { id: "sim2", date: "2026-07-28", track: "Redcar", model: "XGBRanker", winner: "Desert Falcon (IRE)" },
+];
+
+const SAMPLE_DETAIL_TWO = {
+  id: "sim2",
+  date: "2026-07-28",
+  track: "Redcar",
+  model: "XGBRanker",
+  results: [
+    { rank: 1, horse: "Desert Falcon (IRE)", predictedRank: 1, probability: 20, odds: "1-1", model: "XGBRanker" },
+  ],
+};
+
 const SAMPLE_DETAIL = {
   id: "sim1",
   date: "2026-07-29",
@@ -113,6 +128,35 @@ describe("History", () => {
 
     await waitFor(() => expect(screen.queryByText("Kasymir (FR)")).not.toBeInTheDocument());
     expect(api.getHistoryDetail).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows the most recently clicked row's detail even if an older request resolves later", async () => {
+    const user = userEvent.setup();
+    useAuth.mockReturnValue({ user: { email: "rider@example.com" }, loading: false });
+    api.getHistory.mockResolvedValue(SAMPLE_HISTORY_TWO_ROWS);
+
+    // sim1's request is deliberately left pending so it can resolve *after*
+    // sim2's — this only passes if handleRowClick guards against a stale,
+    // out-of-order response overwriting the newer selection (see History.jsx).
+    let resolveSim1Detail;
+    const sim1Detail = new Promise((resolve) => { resolveSim1Detail = resolve; });
+    api.getHistoryDetail.mockImplementation((id) => (id === "sim1" ? sim1Detail : Promise.resolve(SAMPLE_DETAIL_TWO)));
+
+    renderHistory();
+    await screen.findByText("Leicester");
+
+    await user.click(screen.getByText("Leicester")); // starts the slow sim1 request
+    await user.click(screen.getByText("Redcar")); // starts + resolves the sim2 request
+    // "Desert Falcon (IRE)" appears twice once its detail is showing: once
+    // as the table row's winner cell, once in the expanded breakdown.
+    await waitFor(() => expect(screen.getAllByText("Desert Falcon (IRE)")).toHaveLength(2));
+
+    resolveSim1Detail(SAMPLE_DETAIL);
+    // Give the now-resolved (but stale) sim1 promise's callbacks a turn to run.
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(screen.getAllByText("Desert Falcon (IRE)")).toHaveLength(2);
+    expect(screen.queryByText("Kasymir (FR)")).not.toBeInTheDocument();
   });
 
   it("shows an error message if the detail request fails", async () => {

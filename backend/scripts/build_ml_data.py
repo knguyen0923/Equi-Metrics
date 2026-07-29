@@ -13,6 +13,7 @@ Inputs (not committed to git, see ../../ml-models/):
 Outputs (committed, small enough for git, loaded by app/ml/registry.py):
     app/ml/data/test_races.csv
     app/ml/data/xgbranker_feature_columns.json
+    app/ml/data/known_categories.json
 """
 import json
 from pathlib import Path
@@ -49,6 +50,19 @@ FEATURE_SOURCE_COLS = [
 
 KEEP_COLS = sorted(set(DISPLAY_COLS) | set(FEATURE_SOURCE_COLS))
 
+# Must match app/ml/registry.py's _CATEGORICAL_COLS — the columns training
+# one-hot-encoded with pd.get_dummies(drop_first=True). For each, we record
+# every raw value seen anywhere in the full dataset (not just the test
+# split) so registry.py can tell apart two very different situations for a
+# raw value with no matching feature column: it's the alphabetically-first
+# value for that column (training's dropped reference category — expected,
+# not a bug) vs. it never appeared in training at all (a genuine gap).
+CATEGORICAL_COLS = [
+    "race_region", "race_course", "race_class", "race_going",
+    "distance_category", "elo_bucket", "pedigree_quartile",
+    "race_surface", "runner_sex", "runner_headgear",
+]
+
 
 def main():
     df = pd.read_csv(RAW_CSV, low_memory=False, usecols=lambda c: c in KEEP_COLS)
@@ -74,6 +88,11 @@ def main():
 
     feature_columns = json.loads(FEATURE_COLUMNS_SRC.read_text())
     (OUT_DIR / "xgbranker_feature_columns.json").write_text(json.dumps(feature_columns))
+
+    # Full-dataset vocabulary (train+test combined), not just the test
+    # split — that's what pd.get_dummies actually saw during training.
+    known_categories = {col: sorted(str(v) for v in df[col].dropna().unique()) for col in CATEGORICAL_COLS}
+    (OUT_DIR / "known_categories.json").write_text(json.dumps(known_categories))
 
     print(f"Wrote {len(test_df)} rows across {test_df['race_key'].nunique()} test races to {OUT_DIR}")
 

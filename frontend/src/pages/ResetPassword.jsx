@@ -47,7 +47,9 @@ export default function ResetPassword() {
 
           {!done ? (
             <form className="form-grid" style={{ gridTemplateColumns: '1fr', gap: '8px' }} onSubmit={handleSubmit}>
+              <label htmlFor="reset-new-password" className="sr-only">New password</label>
               <input
+                id="reset-new-password"
                 type="password"
                 placeholder="New password"
                 required

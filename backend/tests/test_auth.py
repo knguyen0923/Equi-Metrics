@@ -29,6 +29,34 @@ def test_signup_rejects_a_duplicate_email(client):
     assert duplicate.status_code == 409
 
 
+def test_signup_returns_409_if_a_duplicate_slips_past_the_find_one_check(client, fake_db, monkeypatch):
+    # The find_one-then-insert_one sequence in auth.py isn't atomic: two
+    # concurrent signups for the same email can both pass the find_one
+    # check before either inserts. The database's unique index is what
+    # actually stops the duplicate — this simulates that race by making
+    # insert_one itself raise, and checks the loser still gets a clean 409
+    # instead of an unhandled 500.
+    from pymongo.errors import DuplicateKeyError
+
+    async def raise_duplicate(*args, **kwargs):
+        raise DuplicateKeyError("email already exists")
+
+    monkeypatch.setattr(fake_db["users"], "insert_one", raise_duplicate)
+
+    response = signup(client, email="rider@example.com")
+
+    assert response.status_code == 409
+
+
+def test_signup_is_rate_limited(client):
+    for i in range(10):
+        response = signup(client, email=f"rider{i}@example.com")
+        assert response.status_code == 201
+
+    limited = signup(client, email="one-too-many@example.com")
+    assert limited.status_code == 429
+
+
 def test_login_succeeds_with_the_right_password(client):
     signup(client, email="rider@example.com", password="correcthorse123")
     response = client.post("/auth/login", json={"email": "rider@example.com", "password": "correcthorse123"})
@@ -70,6 +98,25 @@ def test_forgot_password_gives_the_same_response_for_a_registered_and_unregister
     # endpoint being used to check which emails have accounts.
     assert registered.status_code == unregistered.status_code == 202
     assert registered.json() == unregistered.json()
+
+
+def test_forgot_password_still_responds_normally_if_sending_the_email_fails(client, monkeypatch):
+    # A Resend outage/misconfiguration shouldn't 500 this endpoint or leak
+    # anything different to the caller — the reset token is already saved
+    # by the time the email send is attempted, so failure here is a
+    # send-it-later problem, not a request-failure one.
+    import httpx
+
+    async def raise_http_error(*args, **kwargs):
+        raise httpx.ConnectError("connection failed")
+
+    monkeypatch.setattr("app.routers.auth.send_reset_email", raise_http_error)
+    signup(client, email="rider@example.com")
+
+    response = client.post("/auth/forgot-password", json={"email": "rider@example.com"})
+
+    assert response.status_code == 202
+    assert response.json() == {"detail": "If that email is registered, a reset link has been sent."}
 
 
 def test_reset_password_with_an_invalid_token_is_rejected(client):

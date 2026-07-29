@@ -1,3 +1,18 @@
+/* Visually hidden but still readable by screen readers — used to give form
+   inputs a real accessible <label> without changing this app's
+   placeholder-driven visual design. */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
 :root {
   --bg-main: #060b12;
   --bg-panel: #0d1420;
@@ -355,12 +370,30 @@ a {
   margin-bottom: 18px;
 }
 
+@keyframes stat-card-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 .stat-card {
   background: linear-gradient(180deg, var(--bg-card), #09111c);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   padding: 22px;
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.25);
+  animation: stat-card-in 0.5s ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .stat-card {
+    animation: none;
+  }
 }
 
 .stat-card h3 {

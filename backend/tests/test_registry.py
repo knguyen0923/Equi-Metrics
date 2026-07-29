@@ -9,6 +9,8 @@ against actual data — see the module's own docstring for how that data
 was derived and validated (~71% top-1 accuracy on a 100-race sample).
 """
 
+import numpy as np
+import pandas as pd
 import pytest
 
 from app.ml import registry
@@ -127,3 +129,71 @@ def test_predict_custom_rejects_an_unknown_profile_id():
     context = _sample_context()
     with pytest.raises(ValueError):
         registry.predict_custom(context, [1, 2, 999_999_999])
+
+
+def test_log_unmapped_categories_distinguishes_dropped_baseline_from_genuinely_unseen(caplog):
+    # "Abu Dhabi (UAE)"/"(0, 1300]" have no matching feature column because
+    # they're training's alphabetically-first (drop_first=True) reference
+    # category for race_course/elo_bucket, not because they're unrecognized
+    # — known_categories.json should let the log tell those apart instead
+    # of treating every unmapped value as a signal-loss gap.
+    with caplog.at_level("INFO", logger="app.ml.registry"):
+        registry._log_unmapped_categories()
+
+    assert "dropped baseline category" in caplog.text
+    assert "Abu Dhabi (UAE)" in caplog.text
+    assert "(0, 1300]" in caplog.text
+    assert "never appeared in training data" not in caplog.text
+
+
+def test_transform_headgear_strips_punctuation_to_match_training_columns():
+    # "e/s" was previously left untransformed and silently reindexed to
+    # all-zero — see the module docstring. Fixed by stripping non-alnum
+    # characters the same way race_course's base name is cleaned.
+    transform = registry._CATEGORICAL_TRANSFORMS["runner_headgear"]
+    assert transform("e/s") == "es"
+    assert f"runner_headgear_{transform('e/s')}" in registry._FEATURE_COLUMNS_SET
+
+
+def test_log_unmapped_categories_no_longer_flags_the_fixed_headgear_value(caplog):
+    with caplog.at_level("INFO", logger="app.ml.registry"):
+        registry._log_unmapped_categories()
+    assert "e/s" not in caplog.text
+
+
+@pytest.mark.parametrize(
+    "decimal_odds, expected",
+    [
+        (1.05, "1-10"),
+        (1.25, "1-4"),
+        (1.5, "1-2"),
+        (1.75, "3-4"),
+        (2.0, "1-1"),
+        (5.5, "9-2"),
+    ],
+)
+def test_decimal_to_fractional_quarter_point_resolution(decimal_odds, expected):
+    assert registry._decimal_to_fractional(decimal_odds) == expected
+
+
+def test_decimal_to_fractional_distinguishes_short_priced_favorites():
+    # Previously every price under decimal 1.5 collapsed to the same "1-2"
+    # — a 1.05 and a 1.45 favorite shouldn't render identically.
+    assert registry._decimal_to_fractional(1.05) != registry._decimal_to_fractional(1.45)
+
+
+def test_results_from_scores_shows_dash_for_a_missing_starting_price():
+    # 0.0 is this dataset's sentinel for "no recorded starting price", not
+    # a real decimal odds value (real prices are always > 1.0) —
+    # pd.notna(0.0) is True, so this only passes if the missing-price check
+    # also excludes non-positive values on purpose.
+    race_df = pd.DataFrame({
+        "runner_horse": ["Horse A", "Horse B", "Horse C"],
+        "runner_sp_dec": [0.0, 2.5, 4.0],
+    })
+    scores = np.array([3.0, 2.0, 1.0])
+
+    results = registry._results_from_scores(race_df, scores)
+
+    assert results[0].horse == "Horse A"
+    assert results[0].odds == "—"

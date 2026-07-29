@@ -2,9 +2,33 @@
 // `totalRaces` (GET /simulations/races/count), both fetched by the parent
 // (SimulationSetup), so the headline numbers stay in sync with whatever the
 // backend actually reports instead of drifting from a hardcoded snapshot.
+import { useCountUp } from "../lib/useCountUp";
 
 function parsePercent(value) {
   return parseFloat(String(value).replace('%', ''));
+}
+
+// How many decimal places a percent string like "60.89%" was given, so the
+// animated version doesn't round off to a different precision than the
+// real value has (e.g. "84.75%" shouldn't animate down to "84.8%").
+function decimalPlaces(percentString) {
+  const [, fraction = ""] = String(percentString).split(".");
+  return fraction.replace("%", "").length;
+}
+
+// Counts up from 0 to a metric's real percentage on load, keeping its
+// original decimal precision and "%" suffix.
+function AnimatedPercent({ value }) {
+  const animated = useCountUp(parsePercent(value));
+  return `${animated.toFixed(decimalPlaces(value))}%`;
+}
+
+// Counts up from 0 to a plain integer stat (e.g. total races) on load.
+// Shows "—" if the value hasn't loaded yet, same as before.
+function AnimatedCount({ value }) {
+  const animated = useCountUp(value);
+  if (value == null) return "—";
+  return Math.round(animated).toLocaleString();
 }
 
 export default function AdvancedStats({ metrics, selectedModel, totalRaces }) {
@@ -34,24 +58,24 @@ export default function AdvancedStats({ metrics, selectedModel, totalRaces }) {
         {activeModelStats && (
           <>
             <article className="stat-card">
-              <h3>{activeModelStats.top1}</h3>
+              <h3><AnimatedPercent value={activeModelStats.top1} /></h3>
               <p>{activeModelStats.model} Top-1 Accuracy</p>
             </article>
 
             <article className="stat-card">
-              <h3>{activeModelStats.ndcg10}</h3>
+              <h3><AnimatedPercent value={activeModelStats.ndcg10} /></h3>
               <p>{activeModelStats.model} NDCG@10</p>
             </article>
           </>
         )}
 
         <article className="stat-card">
-          <h3>{bestNdcg10.ndcg10}</h3>
+          <h3><AnimatedPercent value={bestNdcg10.ndcg10} /></h3>
           <p>Best NDCG@10 — {bestNdcg10.model}</p>
         </article>
 
         <article className="stat-card">
-          <h3>{totalRaces != null ? totalRaces.toLocaleString() : "—"}</h3>
+          <h3><AnimatedCount value={totalRaces} /></h3>
           <p>Real historical races available to simulate</p>
         </article>
       </div>

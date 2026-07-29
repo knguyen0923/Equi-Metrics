@@ -71,7 +71,9 @@ export default function Login() {
           </div>
 
           <form className="form-grid" style={{ gridTemplateColumns: '1fr', gap: '8px' }} onSubmit={handleSubmit}>
+            <label htmlFor="login-email" className="sr-only">Email address</label>
             <input
+              id="login-email"
               type="email"
               placeholder="Email address"
               required
@@ -82,7 +84,9 @@ export default function Login() {
             {/* Forgot-password mode only asks for an email; login/signup also need a password */}
             {mode !== "forgot" && (
               <>
+                <label htmlFor="login-password" className="sr-only">Password</label>
                 <input
+                  id="login-password"
                   type="password"
                   placeholder="Password"
                   required

@@ -15,7 +15,7 @@ from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from app.config import settings
-from app.db import users_collection
+from app.db import get_users_collection
 
 # bcrypt silently ignores/truncates bytes past 72 — capping the password
 # length here keeps every character a user types actually meaningful.
@@ -71,7 +71,7 @@ def generate_reset_token() -> tuple[str, str]:
     return raw, hash_reset_token(raw)
 
 
-async def _load_user_for_token(payload: dict) -> Optional[dict]:
+async def _load_user_for_token(payload: dict, users_collection) -> Optional[dict]:
     """Looks up the user a decoded JWT claims to belong to, and rejects it
     if the account's token_version has since moved on (password changed,
     reset used, etc.) — this is what makes token_version bumps actually
@@ -85,6 +85,7 @@ async def _load_user_for_token(payload: dict) -> Optional[dict]:
 
 async def get_current_user(
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(bearer_scheme),
+    users_collection=Depends(get_users_collection),
 ) -> dict:
     """FastAPI dependency for endpoints that require a logged-in user
     (history, change-password, /auth/me). Raises 401 if there's no token,
@@ -94,7 +95,7 @@ async def get_current_user(
     if credentials is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
     payload = decode_access_token(credentials.credentials)
-    user = await _load_user_for_token(payload)
+    user = await _load_user_for_token(payload, users_collection)
     if user is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired token")
     return user
@@ -102,6 +103,7 @@ async def get_current_user(
 
 async def get_optional_user(
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(bearer_scheme),
+    users_collection=Depends(get_users_collection),
 ) -> Optional[dict]:
     """Same idea as get_current_user, but for endpoints usable both logged
     in and anonymously (/simulations/run) — returns None instead of raising
@@ -113,4 +115,4 @@ async def get_optional_user(
         payload = decode_access_token(credentials.credentials)
     except HTTPException:
         return None
-    return await _load_user_for_token(payload)
+    return await _load_user_for_token(payload, users_collection)

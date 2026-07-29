@@ -86,12 +86,29 @@ describe("SimulationSetup", () => {
   });
 
   describe("real race mode", () => {
+    // Search results only appear once the user has actually typed
+    // something (see useDebouncedSearch's `enabled` condition in
+    // SimulationSetup) — there's no default "recent races" list shown on
+    // an empty search, so every test that needs a selected race types a
+    // term first.
+    async function selectRedcar(user) {
+      await user.type(screen.getByPlaceholderText("Search race by course..."), "red");
+      await user.click(await screen.findByText("Redcar"));
+    }
+
+    it("does not call getRaces or show a default race list before the user types anything", async () => {
+      renderPage();
+
+      await waitFor(() => expect(api.getRaceCount).toHaveBeenCalled());
+      expect(api.getRaces).not.toHaveBeenCalled();
+      expect(screen.queryByText("Redcar")).not.toBeInTheDocument();
+    });
+
     it("shows search results, then selecting one enables Run Simulation", async () => {
       const user = userEvent.setup();
       renderPage();
 
-      await screen.findByText("Redcar");
-      await user.click(screen.getByText("Redcar"));
+      await selectRedcar(user);
 
       // Selecting a race collapses the search box into a read-only chip
       // showing the course + date, per the component's handleSelectRace.
@@ -103,19 +120,17 @@ describe("SimulationSetup", () => {
       const user = userEvent.setup();
       renderPage();
 
-      await screen.findByText("Redcar");
-      await user.click(screen.getByText("Redcar"));
+      await selectRedcar(user);
       await user.click(screen.getByRole("button", { name: "Change race" }));
 
       expect(screen.getByPlaceholderText("Search race by course...")).toBeInTheDocument();
       expect(screen.getByRole("button", { name: "Run Simulation" })).toBeDisabled();
     });
 
-    it("typing a new search term calls getRaces with that term", async () => {
+    it("typing a search term calls getRaces with that term", async () => {
       const user = userEvent.setup();
       renderPage();
 
-      await screen.findByText("Redcar");
       await user.type(screen.getByPlaceholderText("Search race by course..."), "leicester");
 
       await waitFor(() => expect(api.getRaces).toHaveBeenCalledWith("leicester"));
@@ -126,8 +141,7 @@ describe("SimulationSetup", () => {
       api.runSimulation.mockResolvedValue(RUN_RESPONSE);
       renderPage();
 
-      await screen.findByText("Redcar");
-      await user.click(screen.getByText("Redcar"));
+      await selectRedcar(user);
       await user.click(screen.getByRole("button", { name: "Run Simulation" }));
 
       expect(api.runSimulation).toHaveBeenCalledWith({ race_key: "rac_1_2026-05-26" });
@@ -139,8 +153,7 @@ describe("SimulationSetup", () => {
       api.runSimulation.mockRejectedValue(new Error("Unknown race_key"));
       renderPage();
 
-      await screen.findByText("Redcar");
-      await user.click(screen.getByText("Redcar"));
+      await selectRedcar(user);
       await user.click(screen.getByRole("button", { name: "Run Simulation" }));
 
       expect(await screen.findByText("Unknown race_key")).toBeInTheDocument();
@@ -151,8 +164,7 @@ describe("SimulationSetup", () => {
       api.runSimulation.mockResolvedValue(RUN_RESPONSE);
       renderPage();
 
-      await screen.findByText("Redcar");
-      await user.click(screen.getByText("Redcar"));
+      await selectRedcar(user);
       await user.click(screen.getByRole("button", { name: "Run Simulation" }));
 
       expect(await screen.findByText("Log in to save this result to your history.")).toBeInTheDocument();
@@ -164,8 +176,7 @@ describe("SimulationSetup", () => {
       api.runSimulation.mockResolvedValue({ ...RUN_RESPONSE, saved: true, id: "sim1" });
       renderPage();
 
-      await screen.findByText("Redcar");
-      await user.click(screen.getByText("Redcar"));
+      await selectRedcar(user);
       await user.click(screen.getByRole("button", { name: "Run Simulation" }));
 
       await screen.findByText("Coton Star (FR)");
@@ -291,8 +302,8 @@ describe("SimulationSetup", () => {
       api.runSimulation.mockResolvedValue(RUN_RESPONSE);
       renderPage();
 
-      await screen.findByText("Redcar");
-      await user.click(screen.getByText("Redcar"));
+      await user.type(screen.getByPlaceholderText("Search race by course..."), "red");
+      await user.click(await screen.findByText("Redcar"));
       await user.click(screen.getByRole("button", { name: "Run Simulation" }));
       await screen.findByText("Coton Star (FR)");
 

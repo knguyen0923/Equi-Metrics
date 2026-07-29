@@ -23,23 +23,20 @@ from tests.fakes import FakeCollection
 
 @pytest.fixture
 def fake_db(monkeypatch):
-    """Replaces every module-level reference to the real Mongo collections
-    with in-memory fakes, so tests never touch a real database.
+    """Replaces the real Mongo collections with in-memory fakes, so tests
+    never touch a real database.
 
-    Each importing module (app.db, app.security, app.routers.auth,
-    app.routers.simulations) bound its own name via `from app.db import
-    users_collection` — plain monkeypatching of app.db's attribute
-    wouldn't reach those already-bound names, so each one is patched
-    individually to point at the *same* fake instances.
+    app.security and app.routers.* never bind their own name for these —
+    they reach the collections only through app.db.get_users_collection() /
+    get_simulations_collection() (via FastAPI's Depends), and both of those
+    just return app.db's module-level globals. So patching those two
+    globals here is the single source of truth for every consumer.
     """
     fake_users = FakeCollection()
     fake_simulations = FakeCollection()
 
     monkeypatch.setattr("app.db.users_collection", fake_users)
     monkeypatch.setattr("app.db.simulations_collection", fake_simulations)
-    monkeypatch.setattr("app.security.users_collection", fake_users)
-    monkeypatch.setattr("app.routers.auth.users_collection", fake_users)
-    monkeypatch.setattr("app.routers.simulations.simulations_collection", fake_simulations)
 
     return {"users": fake_users, "simulations": fake_simulations}
 

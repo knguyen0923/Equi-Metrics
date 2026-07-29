@@ -146,6 +146,16 @@ def test_custom_run_rejects_fewer_than_three_horses(client):
     assert response.status_code == 400
 
 
+def test_custom_run_rejects_an_absurdly_large_field(client):
+    # No real race fields this many runners — this is a schema-level cap
+    # (422, before registry.predict_custom even runs) against an anonymous
+    # caller forcing the server to rank an unreasonably large field.
+    payload = _real_custom_race_payload()
+    payload["profile_ids"] = list(range(41))
+    response = client.post("/simulations/custom-run", json=payload)
+    assert response.status_code == 422
+
+
 # --- History -------------------------------------------------------------
 
 

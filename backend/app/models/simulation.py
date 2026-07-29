@@ -5,7 +5,7 @@
 # JSON contract exactly, without needing Pydantic alias configuration.
 from typing import Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class RaceOption(BaseModel):
@@ -56,7 +56,12 @@ class CustomRaceRequest(BaseModel):
     region: str
     surface: str
     distance_category: str
-    profile_ids: list[int]
+    # No lower bound here — registry.predict_custom's own "at least 3
+    # horses" check turns that into a 400 with a specific message (see
+    # app/main.py's ValueError handler); this is just an upper bound so an
+    # anonymous caller can't force the server to rank an absurdly large
+    # field (real races top out well under this).
+    profile_ids: list[int] = Field(max_length=40)
 
 
 class HorseResult(BaseModel):

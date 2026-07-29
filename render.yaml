@@ -7,6 +7,8 @@ services:
     startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
     healthCheckPath: /health
     envVars:
+      - key: PYTHON_VERSION
+        value: "3.13.5"
       - key: MONGODB_URI
         sync: false
       - key: MONGODB_DB_NAME
@@ -20,4 +22,8 @@ services:
       - key: RESEND_FROM_EMAIL
         sync: false
       - key: FRONTEND_URL
+        sync: false
+      # Optional — see backend/.env.example. Lets CORS also allow Vercel
+      # preview-deployment URLs, which don't match a single fixed FRONTEND_URL.
+      - key: FRONTEND_PREVIEW_ORIGIN_REGEX
         sync: false

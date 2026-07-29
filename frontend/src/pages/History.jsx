@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Navbar from "../components/Navbar";
 import Results from "./Results";
 import { useAuth } from "../context/useAuth";
@@ -13,6 +13,10 @@ export default function History() {
   const [detail, setDetail] = useState(null);
   const [detailError, setDetailError] = useState("");
   const [detailLoading, setDetailLoading] = useState(false);
+  // Tracks which row's detail request is the most recent one, so a slower
+  // older request resolving after a newer one can't overwrite it (or clear
+  // a loading state that belongs to the still-in-flight newer request).
+  const latestRequestedId = useRef(null);
 
   // Only fetches once we know who the user is (or that there isn't one).
   // Re-runs if `user` changes, e.g. after logging in while already on this page.
@@ -29,17 +33,28 @@ export default function History() {
     if (selectedId === sim.id) {
       setSelectedId(null);
       setDetail(null);
+      latestRequestedId.current = null;
       return;
     }
     setSelectedId(sim.id);
     setDetail(null);
     setDetailError("");
     setDetailLoading(true);
+    latestRequestedId.current = sim.id;
     api
       .getHistoryDetail(sim.id)
-      .then(setDetail)
-      .catch((err) => setDetailError(err.message))
-      .finally(() => setDetailLoading(false));
+      .then((data) => {
+        if (latestRequestedId.current !== sim.id) return; // a newer row was clicked meanwhile
+        setDetail(data);
+      })
+      .catch((err) => {
+        if (latestRequestedId.current !== sim.id) return;
+        setDetailError(err.message);
+      })
+      .finally(() => {
+        if (latestRequestedId.current !== sim.id) return;
+        setDetailLoading(false);
+      });
   }
 
   return (
@@ -104,7 +119,7 @@ export default function History() {
                   <p style={{ color: 'var(--text-muted)' }}>
                     {detail.track} — {detail.date} — {detail.model}
                   </p>
-                  <Results data={detail.results} isPlaceholder={false} />
+                  <Results data={detail.results} />
                 </>
               )}
             </div>

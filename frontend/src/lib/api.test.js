@@ -116,6 +116,12 @@ describe("request()", () => {
     expect(result).toEqual({ total: 1770 });
   });
 
+  it("on a network failure: throws a friendly message instead of the raw fetch error", async () => {
+    globalThis.fetch = vi.fn().mockRejectedValue(new TypeError("Failed to fetch"));
+
+    await expect(api.getStats()).rejects.toThrow("Couldn't reach the server");
+  });
+
   it("URL-encodes search terms for the race/horse search endpoints", async () => {
     const fetchSpy = mockFetchOnce({ body: [] });
 

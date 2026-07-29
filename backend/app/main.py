@@ -11,6 +11,7 @@ from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 
+import app.logging_config  # noqa: F401 — side effect: configures logging before anything below can log
 from app.config import settings
 from app.db import init_indexes
 from app.rate_limit import limiter
@@ -51,10 +52,45 @@ app.add_middleware(
     # JWT auth lives in the Authorization header, not cookies, so credentials
     # don't need to cross origins and this list can stay a plain allowlist.
     allow_origins=[settings.frontend_url, "http://localhost:5173"],
+    # Optional: also allow origins matching a regex (e.g. Vercel preview
+    # deployments, which get a unique URL per branch/PR that can't be
+    # listed above) — see config.py's frontend_preview_origin_regex.
+    allow_origin_regex=settings.frontend_preview_origin_regex or None,
     allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Baseline security headers on every response. CSP is scoped to allow
+# cdn.jsdelivr.net specifically (not a blanket allowance) because FastAPI's
+# built-in interactive docs (/docs, /redoc) load Swagger UI/ReDoc's JS/CSS
+# from there — a stricter default-src-only policy would silently break
+# those pages instead of protecting anything, since this API has no other
+# first-party HTML/script of its own to worry about.
+_SECURITY_HEADERS = {
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY",
+    "Referrer-Policy": "strict-origin-when-cross-origin",
+    # No-op over plain HTTP (local dev) — only takes effect once a browser
+    # has seen it over a real HTTPS connection (Render terminates TLS).
+    "Strict-Transport-Security": "max-age=63072000; includeSubDomains",
+    "Content-Security-Policy": (
+        "default-src 'self'; "
+        "img-src 'self' data: https://cdn.jsdelivr.net; "
+        "script-src 'self' https://cdn.jsdelivr.net; "
+        "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
+        "connect-src 'self'"
+    ),
+}
+
+
+@app.middleware("http")
+async def add_security_headers(request: Request, call_next):
+    response = await call_next(request)
+    for header, value in _SECURITY_HEADERS.items():
+        response.headers.setdefault(header, value)
+    return response
+
 
 app.include_router(auth.router)
 app.include_router(simulations.router)

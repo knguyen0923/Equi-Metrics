@@ -12,17 +12,28 @@ race-card data source wired up, so future/hypothetical races aren't
 supported yet.
 
 Encoding note: the model expects one-hot columns matching its training-time
-category set exactly (see xgbranker_feature_columns.json). A handful of
-raw categories in this data don't appear in that set (e.g. the "ARG" race
-region, a couple of rare courses) — those just reindex to all-zero rather
-than erroring, which degrades gracefully rather than crashing. Validated at
-~71% top-1 accuracy on a 100-race sample, in line with the notebook's own
-reported 64.8%. _log_unmapped_categories() below logs exactly which raw
-courses/elo-buckets fall into this gap, so it's visible rather than only
-showing up as a subtly-off prediction.
+category set exactly (see xgbranker_feature_columns.json). A handful of raw
+categories in this data don't appear in that set — those just reindex to
+all-zero rather than erroring, which degrades gracefully rather than
+crashing. Validated at ~71% top-1 accuracy on a 100-race sample, in line
+with the notebook's own reported 64.8%.
+
+Most of that gap isn't actually a gap: training one-hot-encoded with
+pd.get_dummies(drop_first=True), which drops the alphabetically-first raw
+value of *every* categorical column as an implicit reference category
+(e.g. "Abu Dhabi (UAE)" for race_course) — an all-zero row for that column
+is the *correct* encoding for it, not missing signal. known_categories.json
+(see scripts/build_ml_data.py) records the full raw vocabulary training
+actually saw, so _log_unmapped_categories() below checks every categorical
+column and can tell that expected, single-dropped-baseline-per-column case
+apart from a raw value that's neither mapped nor the dropped baseline — a
+real gap, e.g. from a transform guessing the training-time format wrong
+(this is exactly how a missing "e/s" -> "es" cleanup on runner_headgear was
+caught and fixed).
 """
 
 import json
+import logging
 import re
 from pathlib import Path
 
@@ -32,6 +43,8 @@ import xgboost as xgb
 
 from app.models.simulation import HorseResult
 
+logger = logging.getLogger(__name__)
+
 DATA_DIR = Path(__file__).parent / "data"
 
 _model = xgb.XGBRanker()
@@ -39,6 +52,7 @@ _model.load_model(str(DATA_DIR / "final_xgbranker.json"))
 
 _FEATURE_COLUMNS = json.loads((DATA_DIR / "xgbranker_feature_columns.json").read_text())
 _FEATURE_COLUMNS_SET = set(_FEATURE_COLUMNS)
+_KNOWN_CATEGORIES = json.loads((DATA_DIR / "known_categories.json").read_text())
 
 _RACES_DF = pd.read_csv(DATA_DIR / "test_races.csv", low_memory=False)
 
@@ -70,46 +84,85 @@ def _transform_elo_bucket(raw: str) -> str:
     return "".join(numbers) if len(numbers) == 2 else ""
 
 
-def _log_unmapped_categories() -> None:
-    # _transform_course/_transform_elo_bucket guess the training-time column
-    # name from a regex rather than a verified raw->encoded mapping, so a
-    # raw value that doesn't actually match a known feature column silently
-    # reindexes to all-zero in _build_features (no course/elo signal at all
-    # for that row) instead of erroring. Printed once at startup so that
-    # gap is visible in logs rather than only showing up as an unexplained
-    # dip in prediction quality for certain courses.
-    unmapped_courses = sorted(
-        {
-            raw
-            for raw in _RACES_DF["race_course"].dropna().unique()
-            if f"race_course_{_transform_course(raw)}" not in _FEATURE_COLUMNS_SET
-        }
-    )
-    if unmapped_courses:
-        print(f"[ml.registry] {len(unmapped_courses)} course(s) have no matching training feature "
-              f"(will rank with no course signal): {unmapped_courses}")
+def _strip_non_alnum(value) -> str:
+    return re.sub(r"[^A-Za-z0-9]", "", str(value))
 
-    unmapped_buckets = sorted(
-        {
-            raw
-            for raw in _RACES_DF["elo_bucket"].dropna().unique()
-            if f"elo_bucket_{_transform_elo_bucket(raw)}" not in _FEATURE_COLUMNS_SET
-        }
-    )
-    if unmapped_buckets:
-        print(f"[ml.registry] {len(unmapped_buckets)} elo bucket(s) have no matching training feature: "
-              f"{unmapped_buckets}")
+
+# One transform per categorical column, mirroring exactly what a raw value
+# turns into before pd.get_dummies at training time — used both by
+# _build_features below (for the 5 columns that actually need cleanup) and,
+# read-only, by _log_uncovered_raw_values (for every column, to know what
+# feature-column name to look for without touching real encoding behavior).
+_CATEGORICAL_TRANSFORMS = {
+    "race_region": str,
+    "race_course": _transform_course,
+    "race_class": lambda v: str(v).replace(" ", ""),
+    "race_going": lambda v: str(v).replace(" ", ""),
+    "distance_category": str,
+    "elo_bucket": _transform_elo_bucket,
+    "pedigree_quartile": str,
+    "race_surface": str,
+    "runner_sex": str,
+    # Raw values like "e/s" need the slash stripped to match training's
+    # column-name cleanup (see module docstring) — previously left
+    # untransformed, so those rows silently lost headgear signal without
+    # even being logged (only race_course/elo_bucket were checked before).
+    "runner_headgear": _strip_non_alnum,
+}
+
+
+def _log_uncovered_raw_values(column: str, transform) -> None:
+    # A raw value with no matching feature column falls into one of two
+    # very different buckets:
+    #   - it's the alphabetically-first raw value for this column: that's
+    #     exactly the category training's pd.get_dummies(drop_first=True)
+    #     drops as the implicit reference, so an all-zero encoding is
+    #     *correct*, not a gap (see module docstring).
+    #   - anything else: it's not the dropped baseline, so a missing feature
+    #     column means either it's genuinely new data or `transform` guessed
+    #     the training-time format wrong — a real signal-loss gap either way.
+    known = _KNOWN_CATEGORIES.get(column, [])
+    dropped_baseline_value = min(known) if known else None
+
+    dropped_baseline = []
+    genuinely_unseen = []
+    for raw in sorted(_RACES_DF[column].dropna().unique()):
+        if f"{column}_{transform(raw)}" in _FEATURE_COLUMNS_SET:
+            continue
+        (dropped_baseline if str(raw) == dropped_baseline_value else genuinely_unseen).append(raw)
+
+    if dropped_baseline:
+        logger.info(
+            "%d %s value(s) are training's dropped baseline category "
+            "(expected — encodes as all-zero by design, not a gap): %s",
+            len(dropped_baseline), column, dropped_baseline,
+        )
+    if genuinely_unseen:
+        logger.warning(
+            "%d %s value(s) never appeared in training data (will rank with no %s signal): %s",
+            len(genuinely_unseen), column, column, genuinely_unseen,
+        )
+
+
+def _log_unmapped_categories() -> None:
+    for column, transform in _CATEGORICAL_TRANSFORMS.items():
+        _log_uncovered_raw_values(column, transform)
 
 
 _log_unmapped_categories()
 
+# Columns that actually need their raw value rewritten before pd.get_dummies
+# to match training's format. The rest (race_region, distance_category,
+# pedigree_quartile, race_surface, runner_sex) go in untouched, same as
+# before — applying str() to them here would turn real NaNs into the
+# literal string "nan" and change how they're one-hot encoded.
+_TRANSFORMED_COLS = ("race_course", "race_class", "race_going", "elo_bucket", "runner_headgear")
+
 
 def _build_features(race_df: pd.DataFrame) -> pd.DataFrame:
     df = race_df.copy()
-    df["race_course"] = df["race_course"].apply(_transform_course)
-    df["race_going"] = df["race_going"].astype(str).str.replace(" ", "", regex=False)
-    df["race_class"] = df["race_class"].astype(str).str.replace(" ", "", regex=False)
-    df["elo_bucket"] = df["elo_bucket"].apply(_transform_elo_bucket)
+    for column in _TRANSFORMED_COLS:
+        df[column] = df[column].apply(_CATEGORICAL_TRANSFORMS[column])
 
     encoded = pd.get_dummies(df, columns=_CATEGORICAL_COLS)
     return encoded.reindex(columns=_FEATURE_COLUMNS, fill_value=0).astype("float32")
@@ -117,11 +170,20 @@ def _build_features(race_df: pd.DataFrame) -> pd.DataFrame:
 
 def _decimal_to_fractional(decimal_odds: float) -> str:
     # runner_sp_dec is the real historical starting price, e.g. 5.5 -> "9-2".
-    fraction = max(decimal_odds - 1, 0.5)
-    half_steps = round(fraction * 2) / 2
-    if half_steps == int(half_steps):
-        return f"{int(half_steps)}-1"
-    return f"{int(half_steps * 2)}-2"
+    # Quarter-point resolution (1/4, 1/2, 3/4, 1/1, ...) instead of the
+    # previous half-point-only scheme, which floored every price shorter
+    # than 1/2 (decimal 1.5) to the same "1-2" regardless of how much
+    # shorter the true price actually was — a 1.05 and a 1.45 favorite
+    # both displayed identically.
+    fraction = max(decimal_odds - 1, 0.0)
+    quarters = round(fraction * 4)
+    if quarters == 0:
+        return "1-10"  # shorter than 1/4 — not modeling a finer ladder than that
+    if quarters % 4 == 0:
+        return f"{quarters // 4}-1"
+    if quarters % 2 == 0:
+        return f"{quarters // 2}-2"
+    return f"{quarters}-4"
 
 
 def _results_from_scores(race_df: pd.DataFrame, scores: np.ndarray) -> list[HorseResult]:
@@ -133,7 +195,12 @@ def _results_from_scores(race_df: pd.DataFrame, scores: np.ndarray) -> list[Hors
     results = []
     for rank, idx in enumerate(order, start=1):
         row = race_df.iloc[idx]
-        odds = _decimal_to_fractional(row["runner_sp_dec"]) if pd.notna(row["runner_sp_dec"]) else "—"
+        # 0.0 is this data's sentinel for "no recorded starting price" (a
+        # real decimal price is always > 1.0) — pd.notna(0.0) is True, so
+        # without the extra check a missing price rendered as a fabricated
+        # "1-10" near-favorite instead of "—".
+        sp_dec = row["runner_sp_dec"]
+        odds = _decimal_to_fractional(sp_dec) if pd.notna(sp_dec) and sp_dec > 0 else "—"
         results.append(
             HorseResult(
                 rank=rank,

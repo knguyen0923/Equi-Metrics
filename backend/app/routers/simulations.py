@@ -7,7 +7,7 @@ from bson import ObjectId
 from bson.errors import InvalidId
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
-from app.db import simulations_collection
+from app.db import get_simulations_collection
 from app.ml import registry
 from app.models.simulation import (
     CustomRaceRequest,
@@ -32,6 +32,7 @@ async def _save_and_respond(
     date: str,
     course: str,
     results: list[HorseResult],
+    simulations_collection,
     race_key: Optional[str] = None,
 ) -> SimulationRunResponse:
     # Shared by /run and /custom-run: only the race_key/course differ
@@ -113,13 +114,19 @@ async def run_simulation(
     # require login. Whether `user` ends up set just decides whether the
     # result gets saved to history below.
     user: Optional[dict] = Depends(get_optional_user),
+    simulations_collection=Depends(get_simulations_collection),
 ):
     # An unknown race_key raises ValueError, turned into a 400 by the
     # app-wide handler in main.py rather than a try/except here.
     results = registry.predict(payload.race_key)
     date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     return await _save_and_respond(
-        user, date, course=registry.get_race_course(payload.race_key), results=results, race_key=payload.race_key
+        user,
+        date,
+        course=registry.get_race_course(payload.race_key),
+        results=results,
+        simulations_collection=simulations_collection,
+        race_key=payload.race_key,
     )
 
 
@@ -129,6 +136,7 @@ async def run_custom_simulation(
     request: Request,
     payload: CustomRaceRequest,
     user: Optional[dict] = Depends(get_optional_user),
+    simulations_collection=Depends(get_simulations_collection),
 ):
     context = {
         "course": payload.course,
@@ -142,7 +150,13 @@ async def run_custom_simulation(
     # 400 by the app-wide handler in main.py rather than a try/except here.
     results = registry.predict_custom(context, payload.profile_ids)
     date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-    return await _save_and_respond(user, date, course=f"{payload.course} (custom)", results=results)
+    return await _save_and_respond(
+        user,
+        date,
+        course=f"{payload.course} (custom)",
+        results=results,
+        simulations_collection=simulations_collection,
+    )
 
 
 @router.get("/history", response_model=list[HistoryItem])
@@ -152,6 +166,7 @@ async def get_history(
     # get_current_user (not optional): unlike /run, viewing history always
     # requires being logged in — there's nothing to show otherwise.
     user: dict = Depends(get_current_user),
+    simulations_collection=Depends(get_simulations_collection),
 ):
     cursor = (
         simulations_collection.find({"user_id": user["_id"]})
@@ -182,6 +197,7 @@ async def get_history_detail(
     # Scoped to the logged-in user (not just any valid id) so one user
     # can't view another's saved simulation by guessing/incrementing ids.
     user: dict = Depends(get_current_user),
+    simulations_collection=Depends(get_simulations_collection),
 ):
     try:
         object_id = ObjectId(sim_id)

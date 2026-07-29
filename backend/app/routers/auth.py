@@ -1,11 +1,14 @@
 # All /auth/* endpoints: signup, login, "who am I", and the three
 # password-recovery flows (forgot / reset / change).
+import logging
 from datetime import datetime, timedelta, timezone
 
+import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request, status
+from pymongo.errors import DuplicateKeyError
 
 from app.config import settings
-from app.db import users_collection
+from app.db import get_users_collection
 from app.email import send_reset_email
 from app.models.user import (
     ChangePasswordRequest,
@@ -26,6 +29,8 @@ from app.security import (
     verify_password,
 )
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 
@@ -41,7 +46,8 @@ def _token_for(doc: dict) -> TokenOut:
 
 
 @router.post("/signup", response_model=TokenOut, status_code=status.HTTP_201_CREATED)
-async def signup(payload: UserCreate):
+@limiter.limit("10/minute")
+async def signup(request: Request, payload: UserCreate, users_collection=Depends(get_users_collection)):
     # Emails are stored lowercased so "A@x.com" and "a@x.com" are the same
     # account — both here and in every other lookup in this file.
     email = payload.email.lower()
@@ -55,7 +61,15 @@ async def signup(payload: UserCreate):
         "token_version": 0,
         "created_at": datetime.now(timezone.utc),
     }
-    result = await users_collection.insert_one(doc)
+    try:
+        result = await users_collection.insert_one(doc)
+    except DuplicateKeyError:
+        # The find_one check above can't fully close this: two concurrent
+        # signups for the same email can both pass it before either inserts.
+        # users.email's unique index (see db.py's init_indexes) is what
+        # actually prevents the duplicate; this just turns the loser's
+        # crash into the same clean 409 the sequential case already gives.
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="An account with that email already exists")
     doc["_id"] = result.inserted_id
     # Logs the new user in immediately — no separate "confirm your email
     # then log in" step for this v1.
@@ -64,7 +78,7 @@ async def signup(payload: UserCreate):
 
 @router.post("/login", response_model=TokenOut)
 @limiter.limit("10/minute")
-async def login(request: Request, payload: UserLogin):
+async def login(request: Request, payload: UserLogin, users_collection=Depends(get_users_collection)):
     email = payload.email.lower()
     user = await users_collection.find_one({"email": email})
     if user is None or not verify_password(payload.password, user["password_hash"]):
@@ -83,7 +97,9 @@ async def me(user: dict = Depends(get_current_user)):
 
 @router.post("/forgot-password", status_code=status.HTTP_202_ACCEPTED)
 @limiter.limit("5/minute")
-async def forgot_password(request: Request, payload: ForgotPasswordRequest):
+async def forgot_password(
+    request: Request, payload: ForgotPasswordRequest, users_collection=Depends(get_users_collection)
+):
     email = payload.email.lower()
     user = await users_collection.find_one({"email": email})
     if user is not None:
@@ -98,7 +114,15 @@ async def forgot_password(request: Request, payload: ForgotPasswordRequest):
             },
         )
         reset_url = f"{settings.frontend_url}/reset-password?token={raw_token}"
-        await send_reset_email(email, reset_url)
+        try:
+            await send_reset_email(email, reset_url)
+        except httpx.HTTPError as exc:
+            # A Resend outage/misconfiguration (bad key, unverified domain,
+            # timeout) shouldn't 500 this endpoint or reveal anything to the
+            # caller — the token is already saved, so the user can just
+            # request another reset once email is working again. Logged
+            # server-side so the failure is still visible to us.
+            logger.warning("Failed to send reset email to %s: %s", email, exc)
 
     # Always return the same response, whether or not the email is registered,
     # so this endpoint can't be used to enumerate accounts.
@@ -106,7 +130,7 @@ async def forgot_password(request: Request, payload: ForgotPasswordRequest):
 
 
 @router.post("/reset-password", status_code=status.HTTP_204_NO_CONTENT)
-async def reset_password(payload: ResetPasswordRequest):
+async def reset_password(payload: ResetPasswordRequest, users_collection=Depends(get_users_collection)):
     token_hash = hash_reset_token(payload.token)
     user = await users_collection.find_one({"reset_token_hash": token_hash})
     expires = user.get("reset_token_expires") if user else None
@@ -128,7 +152,11 @@ async def reset_password(payload: ResetPasswordRequest):
 
 
 @router.post("/change-password", status_code=status.HTTP_204_NO_CONTENT)
-async def change_password(payload: ChangePasswordRequest, user: dict = Depends(get_current_user)):
+async def change_password(
+    payload: ChangePasswordRequest,
+    user: dict = Depends(get_current_user),
+    users_collection=Depends(get_users_collection),
+):
     if not verify_password(payload.current_password, user["password_hash"]):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Current password is incorrect")
 
