@@ -130,4 +130,30 @@ describe("request()", () => {
     const [url] = fetchSpy.mock.calls[0];
     expect(url).toContain(encodeURIComponent("Ascot & Sons"));
   });
+
+  it("createCheckoutSession posts to /billing/checkout-session with an auth header", async () => {
+    setToken("some-token");
+    const fetchSpy = mockFetchOnce({ body: { checkout_url: "https://checkout.stripe.com/abc" } });
+
+    const result = await api.createCheckoutSession();
+
+    const [url, options] = fetchSpy.mock.calls[0];
+    expect(url).toContain("/billing/checkout-session");
+    expect(options.method).toBe("POST");
+    expect(options.headers.Authorization).toBe("Bearer some-token");
+    expect(result).toEqual({ checkout_url: "https://checkout.stripe.com/abc" });
+  });
+
+  it("createPortalSession posts to /billing/portal-session with an auth header", async () => {
+    setToken("some-token");
+    const fetchSpy = mockFetchOnce({ body: { portal_url: "https://billing.stripe.com/abc" } });
+
+    const result = await api.createPortalSession();
+
+    const [url, options] = fetchSpy.mock.calls[0];
+    expect(url).toContain("/billing/portal-session");
+    expect(options.method).toBe("POST");
+    expect(options.headers.Authorization).toBe("Bearer some-token");
+    expect(result).toEqual({ portal_url: "https://billing.stripe.com/abc" });
+  });
 });

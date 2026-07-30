@@ -15,7 +15,7 @@ import app.logging_config  # noqa: F401 — side effect: configures logging befo
 from app.config import settings
 from app.db import init_indexes
 from app.rate_limit import limiter
-from app.routers import auth, simulations
+from app.routers import auth, billing, simulations
 
 
 @asynccontextmanager
@@ -94,6 +94,7 @@ async def add_security_headers(request: Request, call_next):
 
 app.include_router(auth.router)
 app.include_router(simulations.router)
+app.include_router(billing.router)
 
 
 @app.get("/health")

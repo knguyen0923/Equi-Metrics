@@ -8,6 +8,10 @@ bcrypt==5.0.0
 pyjwt==2.13.0
 httpx==0.28.1
 slowapi==0.1.10
+# stripe-python's *_async methods (Customer.create_async, etc.) run over
+# httpx, already a dependency above, so this stays non-blocking alongside
+# the rest of the async routers.
+stripe==15.4.0
 python-multipart==0.0.32
 pandas==3.0.5
 xgboost==3.3.0

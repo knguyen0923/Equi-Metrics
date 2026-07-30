@@ -2,6 +2,7 @@
 # describe the API's JSON contract — they're separate from the raw dict
 # shape stored in MongoDB (see users_collection in db.py).
 from datetime import datetime
+from typing import Optional
 
 from pydantic import BaseModel, EmailStr, Field
 
@@ -21,10 +22,15 @@ class UserLogin(BaseModel):
 
 
 class UserOut(BaseModel):
-    # What the API ever returns about a user — notably no password_hash.
+    # What the API ever returns about a user — notably no password_hash,
+    # and no stripe_customer_id/stripe_subscription_id (internal
+    # correlation keys the frontend has no use for).
     id: str
     email: str
     created_at: datetime
+    tier: str = "free"
+    subscription_status: Optional[str] = None
+    current_period_end: Optional[datetime] = None
 
 
 class TokenOut(BaseModel):

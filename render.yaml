@@ -27,3 +27,15 @@ services:
       # preview-deployment URLs, which don't match a single fixed FRONTEND_URL.
       - key: FRONTEND_PREVIEW_ORIGIN_REGEX
         sync: false
+      # Stripe billing — see backend/.env.example. Leave blank to disable
+      # /billing/* endpoints.
+      - key: STRIPE_SECRET_KEY
+        sync: false
+      - key: STRIPE_WEBHOOK_SECRET
+        sync: false
+      - key: STRIPE_DEFAULT_PRICE_ID
+        sync: false
+      - key: STRIPE_CHECKOUT_SUCCESS_URL
+        sync: false
+      - key: STRIPE_CHECKOUT_CANCEL_URL
+        sync: false

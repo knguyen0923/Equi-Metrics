@@ -116,3 +116,26 @@ async def get_optional_user(
     except HTTPException:
         return None
     return await _load_user_for_token(payload, users_collection)
+
+
+# Ranks tiers so require_tier can do a >= comparison instead of an exact
+# match. Only two tiers exist today; a future third tier just needs a new
+# entry here with a higher rank.
+_TIER_RANK = {"free": 0, "paid": 1}
+
+
+def require_tier(min_tier: str):
+    """Dependency factory for gating an endpoint behind a subscription tier,
+    e.g. `Depends(require_tier("paid"))`. Not used by any route yet — added
+    now so a future feature-gating change doesn't need to touch security.py.
+    """
+
+    async def _dependency(user: dict = Depends(get_current_user)) -> dict:
+        if _TIER_RANK.get(user.get("tier", "free"), 0) < _TIER_RANK.get(min_tier, 0):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="This feature requires a higher subscription tier",
+            )
+        return user
+
+    return _dependency

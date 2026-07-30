@@ -36,7 +36,14 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 
 def _user_out(doc: dict) -> UserOut:
     """Converts a raw Mongo user document into the public UserOut shape."""
-    return UserOut(id=str(doc["_id"]), email=doc["email"], created_at=doc["created_at"])
+    return UserOut(
+        id=str(doc["_id"]),
+        email=doc["email"],
+        created_at=doc["created_at"],
+        tier=doc.get("tier", "free"),
+        subscription_status=doc.get("subscription_status"),
+        current_period_end=doc.get("current_period_end"),
+    )
 
 
 def _token_for(doc: dict) -> TokenOut:
@@ -60,6 +67,7 @@ async def signup(request: Request, payload: UserCreate, users_collection=Depends
         "password_hash": hash_password(payload.password),
         "token_version": 0,
         "created_at": datetime.now(timezone.utc),
+        "tier": "free",
     }
     try:
         result = await users_collection.insert_one(doc)

@@ -70,3 +70,22 @@ def test_reset_token_hash_is_deterministic_but_the_raw_token_is_not_guessable():
     # submitted and comparing against the stored hash.
     assert security.hash_reset_token(raw_a) == hash_a
     assert security.hash_reset_token(raw_a) == security.hash_reset_token(raw_a)
+
+
+def test_require_tier_rejects_a_free_user_and_allows_a_paid_one():
+    # require_tier isn't wired into any route yet, so this drives its inner
+    # dependency function directly with a plain user dict rather than going
+    # through FastAPI's DI (Depends(get_current_user) is only resolved when
+    # a real request comes in).
+    import asyncio
+
+    from fastapi import HTTPException
+
+    dependency = security.require_tier("paid")
+
+    with pytest.raises(HTTPException) as exc_info:
+        asyncio.run(dependency(user={"tier": "free"}))
+    assert exc_info.value.status_code == 403
+
+    result = asyncio.run(dependency(user={"tier": "paid"}))
+    assert result == {"tier": "paid"}

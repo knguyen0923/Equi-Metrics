@@ -99,4 +99,9 @@ export const api = {
   getRaceContextOptions: () => request("/simulations/race-context-options"),
   searchHorses: (search = "") => request(`/simulations/horses?search=${encodeURIComponent(search)}&limit=20`),
   runCustomSimulation: (payload) => request("/simulations/custom-run", { method: "POST", auth: true, body: payload }),
+  // Both return a Stripe-hosted URL to redirect the browser to — see
+  // backend/app/routers/billing.py. No price_id needed while there's only
+  // one paid tier; the backend falls back to its configured default.
+  createCheckoutSession: () => request("/billing/checkout-session", { method: "POST", auth: true, body: {} }),
+  createPortalSession: () => request("/billing/portal-session", { method: "POST", auth: true }),
 };

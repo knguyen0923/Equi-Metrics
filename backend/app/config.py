@@ -26,6 +26,15 @@ class Settings(BaseSettings):
     # for how to set this once you know your Vercel project's URL pattern.
     frontend_preview_origin_regex: str = ""
 
+    # Stripe billing. All blank by default — like resend_api_key, billing
+    # endpoints just 503 rather than the app refusing to start, since most
+    # local dev/testing doesn't need a real Stripe account configured.
+    stripe_secret_key: str = ""
+    stripe_webhook_secret: str = ""
+    stripe_default_price_id: str = ""
+    stripe_checkout_success_url: str = ""
+    stripe_checkout_cancel_url: str = ""
+
     @field_validator("jwt_secret")
     @classmethod
     def _jwt_secret_must_be_long_enough(cls, value: str) -> str:
@@ -37,6 +46,20 @@ class Settings(BaseSettings):
         # it raises below that).
         if len(value) < 32:
             raise ValueError(f"JWT_SECRET must be at least 32 characters long (got {len(value)})")
+        return value
+
+    @field_validator("stripe_secret_key")
+    @classmethod
+    def _stripe_secret_key_must_look_right(cls, value: str) -> str:
+        if value and not value.startswith("sk_"):
+            raise ValueError("STRIPE_SECRET_KEY must start with 'sk_' (test or live)")
+        return value
+
+    @field_validator("stripe_webhook_secret")
+    @classmethod
+    def _stripe_webhook_secret_must_look_right(cls, value: str) -> str:
+        if value and not value.startswith("whsec_"):
+            raise ValueError("STRIPE_WEBHOOK_SECRET must start with 'whsec_'")
         return value
 
 

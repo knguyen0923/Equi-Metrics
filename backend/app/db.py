@@ -40,6 +40,10 @@ async def init_indexes() -> None:
     - users.email: unique, so two accounts can never share an email.
     - users.reset_token_hash: sparse, since most users don't have a pending
       reset token at any given time.
+    - users.stripe_customer_id: unique + sparse — most users never subscribe
+      so most docs lack this field, but among those that do it's the
+      reverse-lookup key Stripe webhooks use to find "which user is this,"
+      so two users must never end up sharing one.
     - simulations (user_id, created_at): supports the paginated, most-recent
       -first history query in routers/simulations.py.
 
@@ -49,6 +53,7 @@ async def init_indexes() -> None:
     try:
         await users_collection.create_index("email", unique=True)
         await users_collection.create_index("reset_token_hash", sparse=True)
+        await users_collection.create_index("stripe_customer_id", unique=True, sparse=True)
         await simulations_collection.create_index([("user_id", 1), ("created_at", -1)])
     except Exception as exc:  # best-effort at boot; don't block startup on a slow/unreachable Atlas cluster
         logger.warning("Index creation skipped: %s", exc)

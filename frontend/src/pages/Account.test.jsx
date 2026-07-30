@@ -1,10 +1,10 @@
 // Account is gated on auth (see the component's own comment) and its only
 // real behavior is the change-password form — both are covered here. The
 // backend (api.js) and auth context are both mocked.
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import Account from "./Account";
 import { api } from "../lib/api";
 import { useAuth } from "../context/useAuth";
@@ -12,6 +12,8 @@ import { useAuth } from "../context/useAuth";
 vi.mock("../lib/api", () => ({
   api: {
     changePassword: vi.fn(),
+    createCheckoutSession: vi.fn(),
+    createPortalSession: vi.fn(),
   },
 }));
 
@@ -86,5 +88,60 @@ describe("Account", () => {
 
     expect(await screen.findByText("Current password is incorrect")).toBeInTheDocument();
     expect(screen.queryByText("Password updated.")).not.toBeInTheDocument();
+  });
+
+  describe("subscription section", () => {
+    // jsdom's window.location.href isn't spy-able in place (its property
+    // descriptor isn't configurable), so the whole location object is
+    // swapped out for a plain stub for the duration of each test here —
+    // same pattern as lib/api.test.js's 401-redirect test.
+    let originalLocation;
+
+    beforeEach(() => {
+      originalLocation = window.location;
+      delete window.location;
+      window.location = { ...originalLocation, href: "" };
+    });
+
+    afterEach(() => {
+      window.location = originalLocation;
+    });
+
+    it("shows Free plan and an Upgrade button for a free-tier user, and redirects to Checkout", async () => {
+      const user = userEvent.setup();
+      useAuth.mockReturnValue({ user: { email: "rider@example.com", tier: "free" }, loading: false });
+      api.createCheckoutSession.mockResolvedValue({ checkout_url: "https://checkout.stripe.com/abc" });
+      renderAccount();
+
+      expect(screen.getByText("Free")).toBeInTheDocument();
+      await user.click(screen.getByRole("button", { name: "Upgrade" }));
+
+      expect(api.createCheckoutSession).toHaveBeenCalled();
+      await waitFor(() => expect(window.location.href).toBe("https://checkout.stripe.com/abc"));
+    });
+
+    it("shows Pro plan and a Manage Subscription button for a paid-tier user, and redirects to the Portal", async () => {
+      const user = userEvent.setup();
+      useAuth.mockReturnValue({ user: { email: "rider@example.com", tier: "paid" }, loading: false });
+      api.createPortalSession.mockResolvedValue({ portal_url: "https://billing.stripe.com/abc" });
+      renderAccount();
+
+      expect(screen.getByText("Pro")).toBeInTheDocument();
+      await user.click(screen.getByRole("button", { name: "Manage Subscription" }));
+
+      expect(api.createPortalSession).toHaveBeenCalled();
+      await waitFor(() => expect(window.location.href).toBe("https://billing.stripe.com/abc"));
+    });
+
+    it("shows an error message if starting checkout fails", async () => {
+      const user = userEvent.setup();
+      useAuth.mockReturnValue({ user: { email: "rider@example.com", tier: "free" }, loading: false });
+      api.createCheckoutSession.mockRejectedValue(new Error("Billing is not configured on this server"));
+      renderAccount();
+
+      await user.click(screen.getByRole("button", { name: "Upgrade" }));
+
+      expect(await screen.findByText("Billing is not configured on this server")).toBeInTheDocument();
+    });
   });
 });
