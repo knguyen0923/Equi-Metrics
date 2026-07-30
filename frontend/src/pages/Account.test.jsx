@@ -133,6 +133,26 @@ describe("Account", () => {
       await waitFor(() => expect(window.location.href).toBe("https://billing.stripe.com/abc"));
     });
 
+    it("shows the renewal date for a paid-tier user with a current_period_end", () => {
+      useAuth.mockReturnValue({
+        user: { email: "rider@example.com", tier: "paid", current_period_end: "2026-08-30T00:41:49" },
+        loading: false,
+      });
+      renderAccount();
+
+      expect(screen.getByText("Renews August 30, 2026")).toBeInTheDocument();
+    });
+
+    it("does not show a renewal date for a free-tier user", () => {
+      useAuth.mockReturnValue({
+        user: { email: "rider@example.com", tier: "free", current_period_end: null },
+        loading: false,
+      });
+      renderAccount();
+
+      expect(screen.queryByText(/^Renews/)).not.toBeInTheDocument();
+    });
+
     it("shows an error message if starting checkout fails", async () => {
       const user = userEvent.setup();
       useAuth.mockReturnValue({ user: { email: "rider@example.com", tier: "free" }, loading: false });

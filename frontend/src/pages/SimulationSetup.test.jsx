@@ -362,5 +362,45 @@ describe("SimulationSetup", () => {
 
       expect(screen.getAllByRole("button", { name: /^Remove Zephyr/ })).toHaveLength(1);
     });
+
+    it("shows a message instead of adding anything when every fetched candidate is already selected", async () => {
+      const user = userEvent.setup();
+      api.populateHorses.mockResolvedValue(HORSE_OPTIONS);
+      renderPage();
+      await screen.findByText("Course");
+
+      const horseInput = screen.getByPlaceholderText("Search horses by name to add to the field...");
+      for (const name of ["Zephyr (AUS)", "Desert Falcon (IRE)", "Bailly's Comet (GB)"]) {
+        await user.type(horseInput, name.slice(0, 3));
+        await user.click(await screen.findByText(name));
+      }
+
+      // Every candidate populateHorses would return is already selected.
+      await user.click(screen.getByRole("button", { name: "Populate Class 1" }));
+
+      expect(await screen.findByText("No new Class 1 horses to add.")).toBeInTheDocument();
+    });
+
+    it("shows a message instead of fetching anything once the field is already full", async () => {
+      const user = userEvent.setup();
+      const SIX_HORSES = Array.from({ length: 6 }, (_, i) => ({
+        profileId: i + 1,
+        horse: `Horse ${i + 1}`,
+        lastCourse: "Ayr",
+        lastDate: "2026-05-01",
+      }));
+      api.populateHorses.mockResolvedValue(SIX_HORSES);
+      renderPage();
+      await screen.findByText("Course");
+
+      await user.click(screen.getByRole("button", { name: "Populate Random" }));
+      await screen.findByText("Horse 6"); // field is now full (6/6)
+
+      api.populateHorses.mockClear();
+      await user.click(screen.getByRole("button", { name: "Populate Random" }));
+
+      expect(await screen.findByText("Your field already has 6 horses.")).toBeInTheDocument();
+      expect(api.populateHorses).not.toHaveBeenCalled();
+    });
   });
 });

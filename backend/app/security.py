@@ -106,8 +106,8 @@ async def get_optional_user(
     users_collection=Depends(get_users_collection),
 ) -> Optional[dict]:
     """Same idea as get_current_user, but for endpoints usable both logged
-    in and anonymously (/simulations/run) — returns None instead of raising
-    when there's no valid session, so the caller can branch on it.
+    in and anonymously (/simulations/custom-run) — returns None instead of
+    raising when there's no valid session, so the caller can branch on it.
     """
     if credentials is None:
         return None

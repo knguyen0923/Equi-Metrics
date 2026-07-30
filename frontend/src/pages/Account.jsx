@@ -76,6 +76,15 @@ export default function Account() {
               Plan: <strong>{user.tier === 'paid' ? 'Pro' : 'Free'}</strong>
               {user.subscription_status && user.subscription_status !== 'active' && ` (${user.subscription_status})`}
             </p>
+            {user.tier === 'paid' && user.current_period_end && (
+              <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>
+                Renews {new Date(user.current_period_end).toLocaleDateString(undefined, {
+                  year: 'numeric',
+                  month: 'long',
+                  day: 'numeric',
+                })}
+              </p>
+            )}
             {billingError && <p style={{ color: 'var(--orange)', fontSize: '0.85rem' }}>{billingError}</p>}
             <button type="button" onClick={handleBillingClick} disabled={billingSubmitting}>
               {billingSubmitting ? 'Please wait...' : user.tier === 'free' ? 'Upgrade' : 'Manage Subscription'}

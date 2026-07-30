@@ -27,6 +27,7 @@ export default function CustomRaceSetup({
   onRemoveHorse,
   onPopulateRandom,
   onPopulateClassOne,
+  populateMessage,
   canRunCustom,
   isSimulating,
   onRunCustomSimulation,
@@ -108,6 +109,10 @@ export default function CustomRaceSetup({
           Populate Class 1
         </button>
       </div>
+
+      {populateMessage && (
+        <p style={{ color: "var(--text-muted)", marginTop: "8px", fontSize: "0.85em" }}>{populateMessage}</p>
+      )}
 
       {selectedHorses.length > 0 && (
         <ul style={{ listStyle: "none", margin: "12px 0 0", padding: 0 }}>

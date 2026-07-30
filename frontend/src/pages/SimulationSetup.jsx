@@ -38,6 +38,7 @@ export default function SimulationSetup() {
     api.searchHorses
   );
   const [selectedHorses, setSelectedHorses] = useState([]);
+  const [populateMessage, setPopulateMessage] = useState("");
 
   // --- State for the Results & Stats ---
   const [simulationResults, setSimulationResults] = useState(null);
@@ -91,14 +92,22 @@ export default function SimulationSetup() {
   }
 
   async function populateHorses(raceClass) {
+    setPopulateMessage("");
     const needed = TARGET_FIELD_SIZE - selectedHorses.length;
-    if (needed <= 0) return;
+    if (needed <= 0) {
+      setPopulateMessage(`Your field already has ${TARGET_FIELD_SIZE} horses.`);
+      return;
+    }
     try {
       const candidates = await api.populateHorses({ raceClass, limit: 20 });
       const fresh = candidates
         .filter((h) => !selectedHorses.some((s) => s.profileId === h.profileId))
         .slice(0, needed);
-      if (fresh.length > 0) setSelectedHorses([...selectedHorses, ...fresh]);
+      if (fresh.length > 0) {
+        setSelectedHorses([...selectedHorses, ...fresh]);
+      } else {
+        setPopulateMessage(raceClass ? `No new ${raceClass} horses to add.` : "No new horses to add.");
+      }
     } catch (err) {
       setError(err.message);
     }
@@ -183,6 +192,7 @@ export default function SimulationSetup() {
             onRemoveHorse={handleRemoveHorse}
             onPopulateRandom={handlePopulateRandom}
             onPopulateClassOne={handlePopulateClassOne}
+            populateMessage={populateMessage}
             canRunCustom={canRunCustom}
             isSimulating={isSimulating}
             onRunCustomSimulation={handleRunCustomSimulation}
