@@ -8,21 +8,6 @@ from typing import Optional
 from pydantic import BaseModel, Field
 
 
-class RaceOption(BaseModel):
-    # One entry in GET /simulations/races — a real historical race the user
-    # can pick to run inference against (see app/ml/registry.py).
-    raceKey: str
-    course: str
-    date: str
-
-
-class SimulationRequest(BaseModel):
-    # Body of POST /simulations/run. race_key must be one returned by
-    # GET /simulations/races — there's no live race-card data source, so
-    # arbitrary/future races aren't supported (see app/ml/registry.py).
-    race_key: str
-
-
 class RaceContextOptions(BaseModel):
     # Response of GET /simulations/race-context-options — the category
     # values the model actually recognizes, for populating the custom race
@@ -33,6 +18,10 @@ class RaceContextOptions(BaseModel):
     regions: list[str]
     surfaces: list[str]
     distanceCategories: list[str]
+    # Maps each course to the one region it actually occurs in, so the
+    # frontend can auto-fill/lock region once a course is picked instead of
+    # letting the two be set to a combination that never occurs in the data.
+    courseRegions: dict[str, str]
 
 
 class HorseProfile(BaseModel):
@@ -75,7 +64,7 @@ class HorseResult(BaseModel):
 
 
 class SimulationRunResponse(BaseModel):
-    # Response of POST /simulations/run.
+    # Response of POST /simulations/custom-run.
     id: Optional[str] = None  # Mongo _id of the saved history row; None if not saved (anonymous run)
     date: str
     results: list[HorseResult]

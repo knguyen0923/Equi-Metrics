@@ -1,5 +1,5 @@
-# All /simulations/* endpoints: running a simulation, fetching a logged-in
-# user's history, and the static model-evaluation stats table.
+# All /simulations/* endpoints: running a custom-race simulation, fetching a
+# logged-in user's history, and the static model-evaluation stats table.
 from datetime import datetime, timezone
 from typing import Optional
 
@@ -17,8 +17,6 @@ from app.models.simulation import (
     HorseResult,
     ModelStat,
     RaceContextOptions,
-    RaceOption,
-    SimulationRequest,
     SimulationRunResponse,
 )
 from app.rate_limit import limiter
@@ -33,17 +31,12 @@ async def _save_and_respond(
     course: str,
     results: list[HorseResult],
     simulations_collection,
-    race_key: Optional[str] = None,
 ) -> SimulationRunResponse:
-    # Shared by /run and /custom-run: only the race_key/course differ
-    # between a real historical race and a custom-built one — everything
-    # else about "save if logged in, then respond" is identical.
     saved_id = None
     if user is not None:
         doc = {
             "user_id": user["_id"],
             "date": date,
-            "race_key": race_key,
             "course": course,
             "model": results[0].model if results else "XGBRanker",
             "results": [r.model_dump() for r in results],
@@ -78,20 +71,6 @@ async def get_stats():
     return _MODEL_STATS
 
 
-@router.get("/races", response_model=list[RaceOption])
-async def get_races(
-    search: str = Query(default="", max_length=100),
-    limit: int = Query(default=20, ge=1, le=100),
-    skip: int = Query(default=0, ge=0),
-):
-    return registry.list_races(search=search, limit=limit, skip=skip)
-
-
-@router.get("/races/count")
-async def get_races_count():
-    return {"total": registry.count_races()}
-
-
 @router.get("/race-context-options", response_model=RaceContextOptions)
 async def get_race_context_options():
     return registry.get_race_context_options()
@@ -100,34 +79,13 @@ async def get_race_context_options():
 @router.get("/horses", response_model=list[HorseProfile])
 async def get_horses(
     search: str = Query(default="", max_length=100),
-    limit: int = Query(default=20, ge=1, le=100),
+    limit: int = Query(default=20, ge=1, le=500),
+    # race_class/random back the frontend's "Populate Random"/"Populate
+    # Class 1" quick-fill buttons — a plain name search never sets these.
+    race_class: Optional[str] = Query(default=None, max_length=50),
+    random: bool = Query(default=False),
 ):
-    return registry.search_horses(search=search, limit=limit)
-
-
-@router.post("/run", response_model=SimulationRunResponse)
-@limiter.limit("20/minute")
-async def run_simulation(
-    request: Request,
-    payload: SimulationRequest,
-    # get_optional_user (not get_current_user): running a simulation doesn't
-    # require login. Whether `user` ends up set just decides whether the
-    # result gets saved to history below.
-    user: Optional[dict] = Depends(get_optional_user),
-    simulations_collection=Depends(get_simulations_collection),
-):
-    # An unknown race_key raises ValueError, turned into a 400 by the
-    # app-wide handler in main.py rather than a try/except here.
-    results = registry.predict(payload.race_key)
-    date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-    return await _save_and_respond(
-        user,
-        date,
-        course=registry.get_race_course(payload.race_key),
-        results=results,
-        simulations_collection=simulations_collection,
-        race_key=payload.race_key,
-    )
+    return registry.search_horses(search=search, limit=limit, race_class=race_class, random_order=random)
 
 
 @router.post("/custom-run", response_model=SimulationRunResponse)
@@ -135,6 +93,9 @@ async def run_simulation(
 async def run_custom_simulation(
     request: Request,
     payload: CustomRaceRequest,
+    # get_optional_user (not get_current_user): running a simulation doesn't
+    # require login. Whether `user` ends up set just decides whether the
+    # result gets saved to history below.
     user: Optional[dict] = Depends(get_optional_user),
     simulations_collection=Depends(get_simulations_collection),
 ):
@@ -163,8 +124,8 @@ async def run_custom_simulation(
 async def get_history(
     limit: int = Query(default=20, ge=1, le=100),
     skip: int = Query(default=0, ge=0),
-    # get_current_user (not optional): unlike /run, viewing history always
-    # requires being logged in — there's nothing to show otherwise.
+    # get_current_user (not optional): unlike /custom-run, viewing history
+    # always requires being logged in — there's nothing to show otherwise.
     user: dict = Depends(get_current_user),
     simulations_collection=Depends(get_simulations_collection),
 ):

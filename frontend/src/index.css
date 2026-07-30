@@ -246,6 +246,26 @@ a {
   transform: translateY(-1px);
 }
 
+/* Search input (e.g. the horse search in CustomRaceSetup) — previously
+   unstyled (plain browser default), so it looked tiny and out of place next
+   to the .form-grid inputs above it. Sized a little larger than those since
+   it's the primary input for building the field, not one of several. */
+.search-input {
+  width: 100%;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  color: var(--text-main);
+  padding: 18px 16px;
+  font-size: 1.05rem;
+  border-radius: 12px;
+  outline: none;
+}
+
+.search-input:focus {
+  border-color: var(--orange);
+  box-shadow: 0 0 0 3px rgba(240, 90, 40, 0.12);
+}
+
 /* Results */
 
 .results-section {
@@ -365,7 +385,7 @@ a {
 
 .stat-card-grid {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(3, 1fr);
   gap: 18px;
   margin-bottom: 18px;
 }

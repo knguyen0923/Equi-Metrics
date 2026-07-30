@@ -55,9 +55,10 @@ describe("request()", () => {
   it("omits the Authorization header for auth calls when there is no stored token", async () => {
     const fetchSpy = mockFetchOnce({ body: [] });
 
-    // runSimulation is auth:true but allowed anonymously (see api.js) —
-    // it just shouldn't crash or send a bogus header when logged out.
-    await api.runSimulation({ race_key: "abc" });
+    // runCustomSimulation is auth:true but allowed anonymously (see
+    // api.js) — it just shouldn't crash or send a bogus header when
+    // logged out.
+    await api.runCustomSimulation({});
 
     const [, options] = fetchSpy.mock.calls[0];
     expect(options.headers.Authorization).toBeUndefined();
@@ -85,9 +86,9 @@ describe("request()", () => {
   });
 
   it("on a non-401 error response: throws the server's detail message", async () => {
-    mockFetchOnce({ ok: false, status: 400, body: { detail: "race_key is required" } });
+    mockFetchOnce({ ok: false, status: 400, body: { detail: "Select at least 3 horses" } });
 
-    await expect(api.runSimulation({})).rejects.toThrow("race_key is required");
+    await expect(api.runCustomSimulation({})).rejects.toThrow("Select at least 3 horses");
   });
 
   it("on an error response with no JSON body: throws a generic fallback message", async () => {
@@ -112,7 +113,7 @@ describe("request()", () => {
   it("returns the parsed JSON body on success", async () => {
     mockFetchOnce({ body: { total: 1770 } });
 
-    const result = await api.getRaceCount();
+    const result = await api.getStats();
     expect(result).toEqual({ total: 1770 });
   });
 
@@ -122,13 +123,28 @@ describe("request()", () => {
     await expect(api.getStats()).rejects.toThrow("Couldn't reach the server");
   });
 
-  it("URL-encodes search terms for the race/horse search endpoints", async () => {
+  it("URL-encodes search terms for the horse search endpoint", async () => {
     const fetchSpy = mockFetchOnce({ body: [] });
 
-    await api.getRaces("Ascot & Sons");
+    await api.searchHorses("Ascot & Sons");
 
     const [url] = fetchSpy.mock.calls[0];
     expect(url).toContain(encodeURIComponent("Ascot & Sons"));
+  });
+
+  it("populateHorses omits race_class when raceClass isn't given, and includes it when it is", async () => {
+    const fetchSpy = mockFetchOnce({ body: [] });
+
+    await api.populateHorses();
+    let [url] = fetchSpy.mock.calls[0];
+    expect(url).toContain("random=true");
+    expect(url).not.toContain("race_class");
+
+    await api.populateHorses({ raceClass: "Class 1" });
+    [url] = fetchSpy.mock.calls[1];
+    // URLSearchParams encodes a space as "+" (standard query-string form),
+    // not "%20" — that's correct, not a bug, so the test matches it.
+    expect(url).toContain("race_class=Class+1");
   });
 
   it("createCheckoutSession posts to /billing/checkout-session with an auth header", async () => {

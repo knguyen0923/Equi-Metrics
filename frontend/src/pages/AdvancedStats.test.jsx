@@ -17,25 +17,19 @@ const METRICS = [
 
 describe("AdvancedStats", () => {
   it("renders nothing while metrics hasn't loaded yet", () => {
-    const { container } = render(
-      <AdvancedStats metrics={null} selectedModel="XGBRanker" totalRaces={100} />
-    );
+    const { container } = render(<AdvancedStats metrics={null} selectedModel="XGBRanker" />);
     expect(container).toBeEmptyDOMElement();
   });
 
   it("renders nothing (rather than crashing) if metrics loaded as an empty array", () => {
     // metrics[0] would be undefined here, which the "best NDCG@10" reduce()
     // uses as its seed — this guards against that instead of throwing.
-    const { container } = render(
-      <AdvancedStats metrics={[]} selectedModel="XGBRanker" totalRaces={100} />
-    );
+    const { container } = render(<AdvancedStats metrics={[]} selectedModel="XGBRanker" />);
     expect(container).toBeEmptyDOMElement();
   });
 
   it("shows the active model's own Top-1 and NDCG@10", () => {
-    const { container } = render(
-      <AdvancedStats metrics={METRICS} selectedModel="XGBRanker" totalRaces={1770} />
-    );
+    const { container } = render(<AdvancedStats metrics={METRICS} selectedModel="XGBRanker" />);
     // Scoped to the headline stat cards, not the comparison table below —
     // several of these percentages (e.g. XGBRanker's own 84.75% NDCG@10)
     // also appear as a table cell, so an unscoped query would match twice.
@@ -48,9 +42,7 @@ describe("AdvancedStats", () => {
   });
 
   it("picks CatBoost as the best NDCG@10 model out of all four, not just the active one", () => {
-    const { container } = render(
-      <AdvancedStats metrics={METRICS} selectedModel="XGBRanker" totalRaces={1770} />
-    );
+    const { container } = render(<AdvancedStats metrics={METRICS} selectedModel="XGBRanker" />);
     const statCards = within(container.querySelector(".stat-card-grid"));
 
     // 85.62% (CatBoost) beats every other model's ndcg10, including the
@@ -60,18 +52,8 @@ describe("AdvancedStats", () => {
     expect(statCards.getByText("Best NDCG@10 — CatBoost Ranker")).toBeInTheDocument();
   });
 
-  it("formats totalRaces with thousands separators, and falls back to a dash while it's still loading", () => {
-    const { rerender } = render(
-      <AdvancedStats metrics={METRICS} selectedModel="XGBRanker" totalRaces={1770} />
-    );
-    expect(screen.getByText("1,770")).toBeInTheDocument();
-
-    rerender(<AdvancedStats metrics={METRICS} selectedModel="XGBRanker" totalRaces={null} />);
-    expect(screen.getByText("—")).toBeInTheDocument();
-  });
-
   it("highlights the active model's row in the comparison table", () => {
-    render(<AdvancedStats metrics={METRICS} selectedModel="CatBoost Ranker" totalRaces={1770} />);
+    render(<AdvancedStats metrics={METRICS} selectedModel="CatBoost Ranker" />);
 
     const activeCell = screen.getByText("CatBoost Ranker");
     expect(activeCell).toHaveStyle({ fontWeight: "bold" });
@@ -81,7 +63,7 @@ describe("AdvancedStats", () => {
   });
 
   it("renders every model's full row in the comparison table", () => {
-    render(<AdvancedStats metrics={METRICS} selectedModel="XGBRanker" totalRaces={1770} />);
+    render(<AdvancedStats metrics={METRICS} selectedModel="XGBRanker" />);
 
     for (const row of METRICS) {
       expect(screen.getByText(row.model)).toBeInTheDocument();

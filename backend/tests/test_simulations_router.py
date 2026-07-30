@@ -1,10 +1,10 @@
 """HTTP-level tests for every /simulations/* endpoint
-(app/routers/simulations.py) — running a real race, building a custom
-one, browsing/reading history, and the read-only stats/lookup endpoints.
+(app/routers/simulations.py) — building a custom race, browsing/reading
+history, and the read-only stats/lookup endpoints.
 
-Real race keys and horse profile ids are pulled from app.ml.registry
-directly rather than hardcoded, so these tests don't silently rot if the
-underlying data file (app/ml/data/test_races.csv) is ever regenerated.
+Real horse profile ids are pulled from app.ml.registry directly rather than
+hardcoded, so these tests don't silently rot if the underlying data file
+(app/ml/data/test_races.csv) is ever regenerated.
 """
 
 from app.ml import registry
@@ -22,18 +22,17 @@ def _auth_headers(token):
     return {"Authorization": f"Bearer {token}"}
 
 
-def _real_race_key():
-    return registry.list_races(limit=1)[0]["raceKey"]
-
-
 def _real_custom_race_payload():
     options = registry.get_race_context_options()
+    course = options["courses"][0]
     horses = registry.search_horses(search="", limit=3)
     return {
-        "course": options["courses"][0],
+        "course": course,
         "going": options["goings"][0],
         "race_class": options["classes"][0],
-        "region": options["regions"][0],
+        # Must be the region that actually corresponds to `course` — see
+        # registry._COURSE_TO_REGION.
+        "region": options["courseRegions"][course],
         "surface": options["surfaces"][0],
         "distance_category": options["distanceCategories"][0],
         "profile_ids": [h["profileId"] for h in horses],
@@ -50,25 +49,11 @@ def test_get_stats_returns_all_four_evaluated_models(client):
     assert models == {"XGBRanker", "CatBoost Ranker", "LightGBM Ranker", "Neural Network Ranker"}
 
 
-def test_get_races_search_filters_by_course(client):
-    response = client.get("/simulations/races", params={"search": "redcar", "limit": 10})
-    assert response.status_code == 200
-    races = response.json()
-    assert len(races) > 0
-    assert all("redcar" in r["course"].lower() for r in races)
-
-
-def test_get_races_count_matches_the_registry(client):
-    response = client.get("/simulations/races/count")
-    assert response.status_code == 200
-    assert response.json() == {"total": registry.count_races()}
-
-
 def test_get_race_context_options_has_the_expected_shape(client):
     response = client.get("/simulations/race-context-options")
     assert response.status_code == 200
     body = response.json()
-    for key in ["courses", "goings", "classes", "regions", "surfaces", "distanceCategories"]:
+    for key in ["courses", "goings", "classes", "regions", "surfaces", "distanceCategories", "courseRegions"]:
         assert key in body
         assert len(body[key]) > 0
 
@@ -81,38 +66,17 @@ def test_get_horses_search_returns_matches(client):
     assert all("zephyr" in h["horse"].lower() for h in horses)
 
 
-# --- Running a real race -------------------------------------------------
+def test_get_horses_populate_random_and_class_filter(client):
+    # Backs the frontend's "Populate Random"/"Populate Class 1" buttons.
+    random_response = client.get("/simulations/horses", params={"random": "true", "limit": 10})
+    assert random_response.status_code == 200
+    assert 0 < len(random_response.json()) <= 10
 
-
-def test_run_simulation_anonymously_is_not_saved(client):
-    response = client.post("/simulations/run", json={"race_key": _real_race_key()})
-    assert response.status_code == 200
-    body = response.json()
-    assert body["saved"] is False
-    assert body["id"] is None
-    assert len(body["results"]) == 3
-    assert body["isPlaceholder"] is False
-
-
-def test_run_simulation_while_logged_in_is_saved_to_history(client):
-    token = _signup_and_get_token(client)
-    response = client.post(
-        "/simulations/run", json={"race_key": _real_race_key()}, headers=_auth_headers(token)
+    class_response = client.get(
+        "/simulations/horses", params={"race_class": "Class 1", "random": "true", "limit": 10}
     )
-    assert response.status_code == 200
-    body = response.json()
-    assert body["saved"] is True
-    assert body["id"] is not None
-
-    history = client.get("/simulations/history", headers=_auth_headers(token)).json()
-    assert len(history) == 1
-    assert history[0]["id"] == body["id"]
-    assert history[0]["winner"] == body["results"][0]["horse"]
-
-
-def test_run_simulation_rejects_an_unknown_race_key(client):
-    response = client.post("/simulations/run", json={"race_key": "not-a-real-race"})
-    assert response.status_code == 400
+    assert class_response.status_code == 200
+    assert len(class_response.json()) > 0
 
 
 # --- Running a custom race ----------------------------------------------
@@ -124,6 +88,14 @@ def test_custom_run_returns_real_ranked_results(client):
     body = response.json()
     assert len(body["results"]) == 3
     assert body["isPlaceholder"] is False
+
+
+def test_custom_run_anonymously_is_not_saved(client):
+    response = client.post("/simulations/custom-run", json=_real_custom_race_payload())
+    assert response.status_code == 200
+    body = response.json()
+    assert body["saved"] is False
+    assert body["id"] is None
 
 
 def test_custom_run_while_logged_in_is_saved_with_a_custom_marked_course(client):
@@ -168,7 +140,7 @@ def test_history_only_shows_the_calling_users_own_simulations(client):
     token_a = _signup_and_get_token(client, email="rider-a@example.com")
     token_b = _signup_and_get_token(client, email="rider-b@example.com")
 
-    client.post("/simulations/run", json={"race_key": _real_race_key()}, headers=_auth_headers(token_a))
+    client.post("/simulations/custom-run", json=_real_custom_race_payload(), headers=_auth_headers(token_a))
 
     history_a = client.get("/simulations/history", headers=_auth_headers(token_a)).json()
     history_b = client.get("/simulations/history", headers=_auth_headers(token_b)).json()
@@ -180,7 +152,7 @@ def test_history_only_shows_the_calling_users_own_simulations(client):
 def test_history_detail_returns_the_full_results_breakdown(client):
     token = _signup_and_get_token(client)
     run_response = client.post(
-        "/simulations/run", json={"race_key": _real_race_key()}, headers=_auth_headers(token)
+        "/simulations/custom-run", json=_real_custom_race_payload(), headers=_auth_headers(token)
     )
     sim_id = run_response.json()["id"]
 
@@ -196,7 +168,7 @@ def test_history_detail_is_not_visible_to_a_different_user(client):
     token_b = _signup_and_get_token(client, email="rider-b@example.com")
 
     run_response = client.post(
-        "/simulations/run", json={"race_key": _real_race_key()}, headers=_auth_headers(token_a)
+        "/simulations/custom-run", json=_real_custom_race_payload(), headers=_auth_headers(token_a)
     )
     sim_id = run_response.json()["id"]
 

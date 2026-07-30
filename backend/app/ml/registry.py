@@ -1,15 +1,16 @@
-"""Real XGBRanker inference over held-out historical races.
+"""Real XGBRanker inference over a custom-built field of horses.
 
 The model was trained in Equi_Metrics.ipynb on real race data (see
 scripts/build_ml_data.py for how app/ml/data/test_races.csv was derived —
 it's the chronological last-20% of races, the same split the notebook used
 to *evaluate* the model, so nothing here was trained on these races).
 
-Users pick one of these real historical races instead of typing in
-arbitrary course/condition combos, since the model needs a real field of
-runners (jockey, trainer, ratings, odds, etc.) to rank — there's no live
-race-card data source wired up, so future/hypothetical races aren't
-supported yet.
+Users assemble a hypothetical race from real horses (each seeded from their
+own most recent real appearance — jockey, trainer, ratings, odds, etc.)
+placed into a race context they pick freely, rather than choosing one of
+these historical races verbatim — see the "Custom race builder" section
+below for how that works and how race-relative features get recomputed for
+the assembled field.
 
 Encoding note: the model expects one-hot columns matching its training-time
 category set exactly (see xgbranker_feature_columns.json). A handful of raw
@@ -230,16 +231,21 @@ def _sorted_unique(series: pd.Series, exclude: set | None = None) -> list:
 
 
 # Precomputed once at module load, not per-request — _RACES_DF never
-# changes at runtime, so list_races/search_horses/get_race_context_options
-# used to redo this same sort/dedup/unique work (over up to ~16k rows) on
-# every single call for no reason.
-_RACE_INDEX = (
-    _RACES_DF[["race_key", "race_course", "race_date"]]
-    .drop_duplicates("race_key")
-    .sort_values("race_date", ascending=False)
-)
-
+# changes at runtime, so search_horses/get_race_context_options used to redo
+# this same sort/dedup/unique work (over up to ~16k rows) on every single
+# call for no reason.
 _LATEST_HORSE_PROFILES = _RACES_DF.sort_values("race_date").drop_duplicates("runner_horse", keep="last")
+
+# Each course only ever appears in one region in real life (a course doesn't
+# move countries), but a handful of rows have inconsistent/dirty
+# race_region values for the same race_course — mode() rather than the
+# first-seen value picks whichever region that course's rows overwhelmingly
+# agree on, so a data glitch in one row can't flip the whole course's mapping.
+_COURSE_TO_REGION = (
+    _RACES_DF.groupby("race_course")["race_region"]
+    .agg(lambda regions: regions.mode().iloc[0])
+    .to_dict()
+)
 
 _RACE_CONTEXT_OPTIONS = {
     "courses": _sorted_unique(_RACES_DF["race_course"]),
@@ -250,36 +256,11 @@ _RACE_CONTEXT_OPTIONS = {
     "regions": _sorted_unique(_RACES_DF["race_region"]),
     "surfaces": _sorted_unique(_RACES_DF["race_surface"]),
     "distanceCategories": _sorted_unique(_RACES_DF["distance_category"]),
+    # Lets the frontend auto-fill/lock the region once a course is picked,
+    # instead of letting the two be set independently to a combination that
+    # never actually occurs in the data (e.g. a GB course with an ARG region).
+    "courseRegions": _COURSE_TO_REGION,
 }
-
-
-def list_races(search: str = "", limit: int = 20, skip: int = 0) -> list[dict]:
-    races = _RACE_INDEX
-    if search:
-        races = races[races["race_course"].str.contains(search, case=False, na=False)]
-    page = races.iloc[skip: skip + limit]
-    return [
-        {"raceKey": row.race_key, "course": row.race_course, "date": row.race_date}
-        for row in page.itertuples()
-    ]
-
-
-def count_races() -> int:
-    return int(_RACES_DF["race_key"].nunique())
-
-
-def get_race_course(race_key: str) -> str:
-    match = _RACES_DF.loc[_RACES_DF["race_key"] == race_key, "race_course"]
-    if match.empty:
-        raise ValueError(f"Unknown race_key: {race_key}")
-    return match.iloc[0]
-
-
-def predict(race_key: str) -> list[HorseResult]:
-    race_df = _RACES_DF[_RACES_DF["race_key"] == race_key].reset_index(drop=True)
-    if race_df.empty:
-        raise ValueError(f"Unknown race_key: {race_key}")
-    return _score_and_rank(race_df)
 
 
 # --- Custom race builder -----------------------------------------------
@@ -303,13 +284,28 @@ def get_race_context_options() -> dict:
     return _RACE_CONTEXT_OPTIONS
 
 
-def search_horses(search: str = "", limit: int = 20) -> list[dict]:
+def search_horses(
+    search: str = "", limit: int = 20, race_class: str | None = None, random_order: bool = False
+) -> list[dict]:
     # One profile per horse: their most recent real appearance, used to
     # seed age/ratings/jockey/etc. defaults for the custom race.
     latest = _LATEST_HORSE_PROFILES
     if search:
         latest = latest[latest["runner_horse"].str.contains(search, case=False, na=False)]
-    latest = latest.sort_values("runner_horse").head(limit)
+    if race_class:
+        # Filters on the class of each horse's most-recent race (the same
+        # one their profile is seeded from), not their full career history —
+        # consistent with how every other profile field here (age, jockey,
+        # ratings) is also only ever this one appearance's data.
+        latest = latest[latest["race_class"] == race_class]
+
+    if random_order:
+        # Used by the frontend's "populate" quick-fill buttons, so repeated
+        # clicks add a different batch instead of the same alphabetically-
+        # first N horses every time.
+        latest = latest.sample(n=min(limit, len(latest))) if len(latest) else latest
+    else:
+        latest = latest.sort_values("runner_horse").head(limit)
 
     return [
         {

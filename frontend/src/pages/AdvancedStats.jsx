@@ -1,7 +1,7 @@
-// Stats are pulled from the `metrics` prop (GET /simulations/stats) and
-// `totalRaces` (GET /simulations/races/count), both fetched by the parent
-// (SimulationSetup), so the headline numbers stay in sync with whatever the
-// backend actually reports instead of drifting from a hardcoded snapshot.
+// Stats are pulled from the `metrics` prop (GET /simulations/stats),
+// fetched by the parent (SimulationSetup), so the headline numbers stay in
+// sync with whatever the backend actually reports instead of drifting from
+// a hardcoded snapshot.
 import { useCountUp } from "../lib/useCountUp";
 
 function parsePercent(value) {
@@ -23,15 +23,7 @@ function AnimatedPercent({ value }) {
   return `${animated.toFixed(decimalPlaces(value))}%`;
 }
 
-// Counts up from 0 to a plain integer stat (e.g. total races) on load.
-// Shows "—" if the value hasn't loaded yet, same as before.
-function AnimatedCount({ value }) {
-  const animated = useCountUp(value);
-  if (value == null) return "—";
-  return Math.round(animated).toLocaleString();
-}
-
-export default function AdvancedStats({ metrics, selectedModel, totalRaces }) {
+export default function AdvancedStats({ metrics, selectedModel }) {
   // Covers both "hasn't loaded yet" (null) and "loaded but empty" (an
   // empty array) — metrics[0] would otherwise be undefined and crash the
   // reduce() below.
@@ -72,11 +64,6 @@ export default function AdvancedStats({ metrics, selectedModel, totalRaces }) {
         <article className="stat-card">
           <h3><AnimatedPercent value={bestNdcg10.ndcg10} /></h3>
           <p>Best NDCG@10 — {bestNdcg10.model}</p>
-        </article>
-
-        <article className="stat-card">
-          <h3><AnimatedCount value={totalRaces} /></h3>
-          <p>Real historical races available to simulate</p>
         </article>
       </div>
 

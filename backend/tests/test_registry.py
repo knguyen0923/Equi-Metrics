@@ -16,61 +16,26 @@ import pytest
 from app.ml import registry
 
 
-def test_count_races_is_positive_and_matches_the_known_test_set_size():
-    # 1,770 is the exact number of held-out test races produced by
-    # scripts/build_ml_data.py at the time this suite was written. If the
-    # underlying data file changes, this is meant to catch that — update
-    # the expected number deliberately, don't just bump it to make it pass.
-    assert registry.count_races() == 1770
-
-
-def test_list_races_search_only_returns_matching_courses():
-    results = registry.list_races(search="redcar", limit=50)
-    assert len(results) > 0
-    assert all("redcar" in r["course"].lower() for r in results)
-
-
-def test_list_races_respects_limit_and_skip():
-    page_one = registry.list_races(limit=5, skip=0)
-    page_two = registry.list_races(limit=5, skip=5)
-    assert len(page_one) == 5
-    assert len(page_two) == 5
-    # Paginated, not overlapping.
-    assert {r["raceKey"] for r in page_one}.isdisjoint({r["raceKey"] for r in page_two})
-
-
-def test_predict_returns_three_horses_ranked_with_sane_values():
-    race_key = registry.list_races(limit=1)[0]["raceKey"]
-    results = registry.predict(race_key)
-
-    assert len(results) == 3
-    assert [r.rank for r in results] == [1, 2, 3]
-    for horse in results:
-        assert horse.model == "XGBRanker"
-        assert 0 <= horse.probability <= 100
-        assert horse.horse  # non-empty real horse name, not a placeholder
-
-
-def test_predict_raises_for_an_unknown_race_key():
-    with pytest.raises(ValueError):
-        registry.predict("this-race-key-does-not-exist")
-
-
-def test_get_race_course_matches_what_list_races_reported():
-    race = registry.list_races(limit=1)[0]
-    assert registry.get_race_course(race["raceKey"]) == race["course"]
-
-
-def test_get_race_course_raises_for_an_unknown_race_key():
-    with pytest.raises(ValueError):
-        registry.get_race_course("this-race-key-does-not-exist")
-
-
 def test_search_horses_returns_matching_names_with_usable_profile_ids():
     results = registry.search_horses(search="zephyr", limit=10)
     assert len(results) > 0
     assert all("zephyr" in h["horse"].lower() for h in results)
     assert all(isinstance(h["profileId"], int) for h in results)
+
+
+def test_search_horses_filters_by_race_class():
+    results = registry.search_horses(limit=50, race_class="Class 1")
+    assert len(results) > 0
+    # HorseProfile doesn't expose race_class, so this checks against the
+    # underlying data directly rather than the returned dicts.
+    profile_ids = {h["profileId"] for h in results}
+    assert (registry._LATEST_HORSE_PROFILES.loc[list(profile_ids), "race_class"] == "Class 1").all()
+
+
+def test_search_horses_random_order_returns_distinct_horses_within_the_limit():
+    results = registry.search_horses(limit=10, random_order=True)
+    assert 0 < len(results) <= 10
+    assert len({h["profileId"] for h in results}) == len(results)
 
 
 def test_get_race_context_options_excludes_the_unclassified_placeholder_class():
@@ -83,13 +48,24 @@ def test_get_race_context_options_excludes_the_unclassified_placeholder_class():
     assert len(options["surfaces"]) > 0
 
 
+def test_course_regions_maps_every_course_to_one_of_the_known_regions():
+    options = registry.get_race_context_options()
+    assert set(options["courseRegions"]) == set(options["courses"])
+    assert all(region in options["regions"] for region in options["courseRegions"].values())
+
+
 def _sample_context():
     options = registry.get_race_context_options()
+    course = options["courses"][0]
     return {
-        "course": options["courses"][0],
+        "course": course,
         "going": options["goings"][0],
         "race_class": options["classes"][0],
-        "region": options["regions"][0],
+        # Must be the region that actually corresponds to `course` — a
+        # mismatched pairing never occurs in real data (see
+        # registry._COURSE_TO_REGION) and would defeat the point of a test
+        # meant to model a realistic custom race.
+        "region": options["courseRegions"][course],
         "surface": options["surfaces"][0],
         "distance_category": options["distanceCategories"][0],
     }

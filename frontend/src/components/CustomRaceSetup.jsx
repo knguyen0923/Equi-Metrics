@@ -1,4 +1,5 @@
-import { dropdownStyle, dropdownItemStyle, mutedSmallText, ghostButtonStyle } from "./setupStyles";
+import { useState } from "react";
+import { dropdownStyle, dropdownItemStyle, mutedSmallText, ghostButtonStyle, secondaryButtonStyle } from "./setupStyles";
 
 const CONTEXT_FIELDS = [
   { key: "course", label: "Course", options: "courses" },
@@ -24,44 +25,88 @@ export default function CustomRaceSetup({
   onAddHorse,
   selectedHorses,
   onRemoveHorse,
+  onPopulateRandom,
+  onPopulateClassOne,
   canRunCustom,
   isSimulating,
   onRunCustomSimulation,
 }) {
+  // Visibility used to be driven purely by "are there any results" —
+  // meaning once a search had ever returned something, the dropdown had no
+  // way to close short of picking a horse. This tracks focus explicitly
+  // instead, so it only opens once the input actually has focus and closes
+  // the moment focus leaves the whole input+dropdown group.
+  const [isDropdownOpen, setDropdownOpen] = useState(false);
+
   return (
     <div>
       <div className="form-grid">
-        {CONTEXT_FIELDS.map(({ key, label, options }) => (
-          <select key={key} value={context[key]} onChange={(e) => onContextChange(key, e.target.value)}>
-            <option value="">{label}</option>
-            {contextOptions?.[options].map((value) => (
-              <option key={value} value={value}>{value}</option>
-            ))}
-          </select>
-        ))}
+        {CONTEXT_FIELDS.map(({ key, label, options }) => {
+          let optionValues = contextOptions?.[options] ?? [];
+          if (key === "course" && context.region) {
+            // Narrows the course list to the selected region's courses —
+            // course and region are kept in sync in both directions (see
+            // SimulationSetup.jsx's handleContextChange).
+            optionValues = optionValues.filter(
+              (course) => contextOptions.courseRegions[course] === context.region
+            );
+          }
+          return (
+            <select key={key} value={context[key]} onChange={(e) => onContextChange(key, e.target.value)}>
+              <option value="">{label}</option>
+              {optionValues.map((value) => (
+                <option key={value} value={value}>{value}</option>
+              ))}
+            </select>
+          );
+        })}
       </div>
 
-      <div style={{ position: "relative", marginTop: "16px" }}>
-        <input
-          placeholder="Search horses by name to add to the field..."
-          value={horseSearchTerm}
-          onChange={(e) => onHorseSearchTermChange(e.target.value)}
-        />
+      <div style={{ display: "flex", gap: "8px", marginTop: "16px" }}>
+        <div
+          style={{ position: "relative", flex: 1 }}
+          onBlur={(e) => {
+            // Closes only when focus actually leaves this whole group (the
+            // input or one of the dropdown's own buttons) — not when focus
+            // just moves from the input to a dropdown item within it.
+            if (!e.currentTarget.contains(e.relatedTarget)) {
+              setDropdownOpen(false);
+            }
+          }}
+        >
+          <input
+            className="search-input"
+            placeholder="Search horses by name to add to the field..."
+            value={horseSearchTerm}
+            onChange={(e) => onHorseSearchTermChange(e.target.value)}
+            onFocus={() => setDropdownOpen(true)}
+          />
 
-        {horseOptions.length > 0 && (
-          <ul style={dropdownStyle}>
-            {horseOptions.map((horse) => (
-              <li key={horse.profileId}>
-                <button type="button" onClick={() => onAddHorse(horse)} style={dropdownItemStyle}>
-                  <span>{horse.horse}</span>
-                  <span style={mutedSmallText}>
-                    last: {horse.lastCourse} — {horse.lastDate}
-                  </span>
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
+          {isDropdownOpen && horseOptions.length > 0 && (
+            <ul style={dropdownStyle}>
+              {horseOptions.map((horse) => (
+                <li key={horse.profileId}>
+                  <button type="button" onClick={() => onAddHorse(horse)} style={dropdownItemStyle}>
+                    <span>{horse.horse}</span>
+                    <span style={mutedSmallText}>
+                      last: {horse.lastCourse} — {horse.lastDate}
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+
+        {/* Quick-fill shortcuts: add real horses without searching by name.
+            "Class 1" pulls from each horse's most recent race only, same as
+            every other profile field (see registry.search_horses). */}
+        <button type="button" onClick={onPopulateRandom} style={secondaryButtonStyle}>
+          Populate Random
+        </button>
+        <button type="button" onClick={onPopulateClassOne} style={secondaryButtonStyle}>
+          Populate Class 1
+        </button>
       </div>
 
       {selectedHorses.length > 0 && (

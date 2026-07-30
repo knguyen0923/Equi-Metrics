@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 import Navbar from "../components/Navbar";
-import RealRaceSetup from "../components/RealRaceSetup";
 import CustomRaceSetup from "../components/CustomRaceSetup";
 import Results from "./Results";
 import AdvancedStats from "./AdvancedStats";
@@ -9,27 +8,14 @@ import { useDebouncedSearch } from "../lib/useDebouncedSearch";
 import { api } from "../lib/api";
 
 // Only XGBRanker was ever exported as a loadable model file (see
-// backend/app/ml/registry.py) — there's no dropdown for it since it's the
-// only option, but AdvancedStats still uses this to highlight its row.
+// backend/app/ml/registry.py) — AdvancedStats uses this to highlight its row.
 const ACTIVE_MODEL = "XGBRanker";
 
+// "Populate Random"/"Populate Class 1" top the field up to this size rather
+// than adding an unbounded pile of horses on repeated clicks.
+const TARGET_FIELD_SIZE = 6;
+
 export default function SimulationSetup() {
-  const [mode, setMode] = useState("real"); // "real" | "custom"
-
-  // --- State for the real-race picker ---
-  const [searchTerm, setSearchTerm] = useState("");
-  const [selectedRace, setSelectedRace] = useState(null);
-  // Races are real historical races the model was never trained on (see
-  // backend/app/ml/registry.py), not arbitrary course/condition combos, so
-  // users search/pick instead of configuring one. Only fetches once the
-  // user has actually typed something, rather than showing an unfiltered
-  // default list of the most recent races.
-  const [raceOptions, setRaceOptions] = useDebouncedSearch(
-    searchTerm,
-    mode === "real" && searchTerm.length > 0,
-    api.getRaces
-  );
-
   // --- State for the custom race builder ---
   const [contextOptions, setContextOptions] = useState(null);
   const [context, setContext] = useState({
@@ -41,13 +27,21 @@ export default function SimulationSetup() {
     distance_category: "",
   });
   const [horseSearchTerm, setHorseSearchTerm] = useState("");
-  const [horseOptions, setHorseOptions] = useDebouncedSearch(horseSearchTerm, mode === "custom", api.searchHorses);
+  // Only fetches once the user has actually typed something — without this,
+  // it fetched on mount with an empty search term, which the backend
+  // resolves to the first 20 horses alphabetically (see
+  // registry.search_horses) and made it look like the horse pool was tiny
+  // and entirely "A"-named, since that's all that ever showed up.
+  const [horseOptions, setHorseOptions] = useDebouncedSearch(
+    horseSearchTerm,
+    horseSearchTerm.length > 0,
+    api.searchHorses
+  );
   const [selectedHorses, setSelectedHorses] = useState([]);
 
   // --- State for the Results & Stats ---
   const [simulationResults, setSimulationResults] = useState(null);
   const [simulationStats, setSimulationStats] = useState(null);
-  const [totalRaces, setTotalRaces] = useState(null);
   const [isSimulating, setIsSimulating] = useState(false);
   const [statusMessage, setStatusMessage] = useState("");
   const [error, setError] = useState("");
@@ -58,27 +52,31 @@ export default function SimulationSetup() {
   // instead of being hardcoded here, so they only need to change in one place.
   useEffect(() => {
     api.getStats().then(setSimulationStats).catch(() => {});
-    api.getRaceCount().then((r) => setTotalRaces(r.total)).catch(() => {});
     api.getRaceContextOptions().then(setContextOptions).catch(() => {});
   }, []);
 
-  function handleSearchTermChange(value) {
-    setSearchTerm(value);
-    setSelectedRace(null);
-  }
-
-  function handleSelectRace(race) {
-    setSelectedRace(race);
-    setRaceOptions([]);
-  }
-
-  function handleClearRace() {
-    setSelectedRace(null);
-    setSearchTerm("");
-  }
-
   function handleContextChange(field, value) {
-    setContext({ ...context, [field]: value });
+    // Course and region can be set in either order — a course only ever
+    // occurs in one region in the data (see backend/app/ml/registry.py's
+    // _COURSE_TO_REGION), so the two must never drift into a combination
+    // that never occurs for real:
+    //  - picking a region narrows CustomRaceSetup's course dropdown to that
+    //    region's courses (see its own render logic);
+    //  - picking a course always snaps region to match it, whether or not
+    //    a region was chosen first;
+    //  - picking a *different* region than an already-selected course's
+    //    own region clears that course, since it's no longer a valid pick
+    //    under the new filter.
+    let next = { ...context, [field]: value };
+
+    if (field === "region" && next.course && contextOptions?.courseRegions?.[next.course] !== value) {
+      next.course = "";
+    }
+    if (next.course) {
+      next.region = contextOptions?.courseRegions?.[next.course] ?? next.region;
+    }
+
+    setContext(next);
   }
 
   function handleAddHorse(horse) {
@@ -90,6 +88,28 @@ export default function SimulationSetup() {
 
   function handleRemoveHorse(profileId) {
     setSelectedHorses(selectedHorses.filter((h) => h.profileId !== profileId));
+  }
+
+  async function populateHorses(raceClass) {
+    const needed = TARGET_FIELD_SIZE - selectedHorses.length;
+    if (needed <= 0) return;
+    try {
+      const candidates = await api.populateHorses({ raceClass, limit: 20 });
+      const fresh = candidates
+        .filter((h) => !selectedHorses.some((s) => s.profileId === h.profileId))
+        .slice(0, needed);
+      if (fresh.length > 0) setSelectedHorses([...selectedHorses, ...fresh]);
+    } catch (err) {
+      setError(err.message);
+    }
+  }
+
+  function handlePopulateRandom() {
+    populateHorses();
+  }
+
+  function handlePopulateClassOne() {
+    populateHorses("Class 1");
   }
 
   const contextComplete = Object.values(context).every(Boolean);
@@ -120,10 +140,6 @@ export default function SimulationSetup() {
     }
   }
 
-  function handleRunSimulation() {
-    runWithWakeupNotice(() => api.runSimulation({ race_key: selectedRace.raceKey }));
-  }
-
   function handleRunCustomSimulation() {
     runWithWakeupNotice(() =>
       api.runCustomSimulation({
@@ -131,12 +147,6 @@ export default function SimulationSetup() {
         profile_ids: selectedHorses.map((h) => h.profileId),
       })
     );
-  }
-
-  function switchMode(nextMode) {
-    setMode(nextMode);
-    setSimulationResults(null);
-    setError("");
   }
 
   return (
@@ -158,64 +168,31 @@ export default function SimulationSetup() {
         <section className="setup-card">
           <div className="section-heading">
             <h2>Race Simulation Setup</h2>
-            <p>
-              {mode === "real"
-                ? "Search for a real historical race to run the model against."
-                : "Assemble your own race from real horses and a race context you choose."}
-            </p>
+            <p>Assemble your own race from real horses and a race context you choose.</p>
           </div>
 
-          <div style={{ display: "flex", gap: "8px", marginBottom: "16px" }}>
-            <button
-              type="button"
-              onClick={() => switchMode("real")}
-              style={{ fontWeight: mode === "real" ? "bold" : "normal" }}
-            >
-              Real Race
-            </button>
-            <button
-              type="button"
-              onClick={() => switchMode("custom")}
-              style={{ fontWeight: mode === "custom" ? "bold" : "normal" }}
-            >
-              Custom Race
-            </button>
-          </div>
-
-          {mode === "real" ? (
-            <RealRaceSetup
-              activeModel={ACTIVE_MODEL}
-              searchTerm={searchTerm}
-              onSearchTermChange={handleSearchTermChange}
-              selectedRace={selectedRace}
-              onSelectRace={handleSelectRace}
-              onClearRace={handleClearRace}
-              raceOptions={raceOptions}
-              isSimulating={isSimulating}
-              onRunSimulation={handleRunSimulation}
-            />
-          ) : (
-            <CustomRaceSetup
-              contextOptions={contextOptions}
-              context={context}
-              onContextChange={handleContextChange}
-              horseSearchTerm={horseSearchTerm}
-              onHorseSearchTermChange={setHorseSearchTerm}
-              horseOptions={horseOptions}
-              onAddHorse={handleAddHorse}
-              selectedHorses={selectedHorses}
-              onRemoveHorse={handleRemoveHorse}
-              canRunCustom={canRunCustom}
-              isSimulating={isSimulating}
-              onRunCustomSimulation={handleRunCustomSimulation}
-            />
-          )}
+          <CustomRaceSetup
+            contextOptions={contextOptions}
+            context={context}
+            onContextChange={handleContextChange}
+            horseSearchTerm={horseSearchTerm}
+            onHorseSearchTermChange={setHorseSearchTerm}
+            horseOptions={horseOptions}
+            onAddHorse={handleAddHorse}
+            selectedHorses={selectedHorses}
+            onRemoveHorse={handleRemoveHorse}
+            onPopulateRandom={handlePopulateRandom}
+            onPopulateClassOne={handlePopulateClassOne}
+            canRunCustom={canRunCustom}
+            isSimulating={isSimulating}
+            onRunCustomSimulation={handleRunCustomSimulation}
+          />
 
           {statusMessage && <p style={{ color: 'var(--text-muted)', marginTop: '8px' }}>{statusMessage}</p>}
           {error && <p style={{ color: 'var(--orange)', marginTop: '8px' }}>{error}</p>}
           {/* Simulations run without logging in, but only get saved to
               history if the user was logged in at the time — see
-              backend/app/routers/simulations.py's run_simulation */}
+              backend/app/routers/simulations.py's run_custom_simulation */}
           {!user && simulationResults && (
             <p style={{ color: 'var(--text-muted)', marginTop: '8px' }}>
               Log in to save this result to your history.
@@ -225,7 +202,7 @@ export default function SimulationSetup() {
 
         {/* Every result is real model output now (see backend/app/ml/registry.py) */}
         <Results data={simulationResults} />
-        <AdvancedStats metrics={simulationStats} selectedModel={ACTIVE_MODEL} totalRaces={totalRaces} />
+        <AdvancedStats metrics={simulationStats} selectedModel={ACTIVE_MODEL} />
       </main>
     </>
   );
