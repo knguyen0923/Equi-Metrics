@@ -95,6 +95,20 @@ def test_checkout_session_503s_when_stripe_is_not_configured(client, monkeypatch
     assert response.status_code == 503
 
 
+def test_checkout_session_rejects_a_user_who_already_has_an_active_subscription(client, fake_db, monkeypatch):
+    # Otherwise a double-click on "Upgrade" (or hitting the endpoint twice)
+    # creates a second, separate subscription on the same Stripe customer —
+    # this is what actually happened during manual testing.
+    token = _signup_and_get_token(client)
+    user_doc = next(iter(fake_db["users"].docs.values()))
+    user_doc["tier"] = "paid"
+    user_doc["subscription_status"] = "active"
+
+    response = client.post("/billing/checkout-session", json={}, headers=_auth_headers(token))
+
+    assert response.status_code == 400
+
+
 def test_checkout_session_503s_when_no_price_is_configured(client, monkeypatch):
     monkeypatch.setattr("app.config.settings.stripe_default_price_id", "")
     token = _signup_and_get_token(client)
@@ -228,10 +242,43 @@ def test_webhook_subscription_updated_with_past_due_status_does_not_grant_paid_t
     assert fake_db["users"].docs[user_doc["_id"]]["tier"] == "free"
 
 
+def test_webhook_subscription_updated_ignores_a_non_current_subscription(client, fake_db, monkeypatch):
+    # A stale/duplicate subscription on the same customer changing status
+    # (e.g. its own cancellation working through past_due) must not affect
+    # the tier the user actually has via their current subscription.
+    token = _signup_and_get_token(client)
+    user_doc = next(iter(fake_db["users"].docs.values()))
+    user_doc["stripe_customer_id"] = "cus_123"
+    user_doc["stripe_subscription_id"] = "sub_current"
+    user_doc["tier"] = "paid"
+    user_doc["subscription_status"] = "active"
+
+    event = {
+        "type": "customer.subscription.updated",
+        "data": {
+            "object": {
+                "customer": "cus_123",
+                "status": "past_due",
+                "id": "sub_stale_duplicate",
+                "items": {"data": [{"current_period_end": None}]},
+            }
+        },
+    }
+
+    response = _post_webhook(client, monkeypatch, event)
+
+    assert response.status_code == 200
+    updated = fake_db["users"].docs[user_doc["_id"]]
+    assert updated["tier"] == "paid"
+    assert updated["subscription_status"] == "active"
+    assert updated["stripe_subscription_id"] == "sub_current"
+
+
 def test_webhook_subscription_deleted_resets_tier_to_free(client, fake_db, monkeypatch):
     token = _signup_and_get_token(client)
     user_doc = next(iter(fake_db["users"].docs.values()))
     user_doc["stripe_customer_id"] = "cus_123"
+    user_doc["stripe_subscription_id"] = "sub_123"
     user_doc["tier"] = "paid"
     user_doc["subscription_status"] = "active"
 
@@ -247,6 +294,70 @@ def test_webhook_subscription_deleted_resets_tier_to_free(client, fake_db, monke
     assert updated["tier"] == "free"
     assert updated["subscription_status"] == "canceled"
     assert updated["current_period_end"] is None
+    # Cleared, not left pointing at the now-deleted subscription — otherwise
+    # a future resubscribe's events would be mistaken for a stale duplicate
+    # by _owns_subscription and get ignored.
+    assert updated["stripe_subscription_id"] is None
+
+
+def test_webhook_handles_a_resubscribe_after_a_prior_cancellation(client, fake_db, monkeypatch):
+    token = _signup_and_get_token(client)
+    user_doc = next(iter(fake_db["users"].docs.values()))
+    user_doc["stripe_customer_id"] = "cus_123"
+    user_doc["stripe_subscription_id"] = "sub_old"
+    user_doc["tier"] = "paid"
+    user_doc["subscription_status"] = "active"
+
+    deleted_event = {
+        "type": "customer.subscription.deleted",
+        "data": {"object": {"customer": "cus_123", "id": "sub_old"}},
+    }
+    assert _post_webhook(client, monkeypatch, deleted_event).status_code == 200
+    assert fake_db["users"].docs[user_doc["_id"]]["stripe_subscription_id"] is None
+
+    # A brand new subscription (different id) must be accepted, not ignored
+    # as a "non-current" one — the prior deletion cleared the slate.
+    created_event = {
+        "type": "customer.subscription.created",
+        "data": {
+            "object": {
+                "customer": "cus_123",
+                "status": "active",
+                "id": "sub_new",
+                "items": {"data": [{"current_period_end": None}]},
+            }
+        },
+    }
+    response = _post_webhook(client, monkeypatch, created_event)
+
+    assert response.status_code == 200
+    updated = fake_db["users"].docs[user_doc["_id"]]
+    assert updated["tier"] == "paid"
+    assert updated["stripe_subscription_id"] == "sub_new"
+
+
+def test_webhook_subscription_deleted_ignores_a_non_current_subscription(client, fake_db, monkeypatch):
+    # A customer can end up with more than one subscription (e.g. a
+    # double-submitted Checkout). Deleting the *other* one must not wipe
+    # out the tier granted by the subscription the user is actually on.
+    token = _signup_and_get_token(client)
+    user_doc = next(iter(fake_db["users"].docs.values()))
+    user_doc["stripe_customer_id"] = "cus_123"
+    user_doc["stripe_subscription_id"] = "sub_current"
+    user_doc["tier"] = "paid"
+    user_doc["subscription_status"] = "active"
+
+    event = {
+        "type": "customer.subscription.deleted",
+        "data": {"object": {"customer": "cus_123", "id": "sub_stale_duplicate"}},
+    }
+
+    response = _post_webhook(client, monkeypatch, event)
+
+    assert response.status_code == 200
+    updated = fake_db["users"].docs[user_doc["_id"]]
+    assert updated["tier"] == "paid"
+    assert updated["subscription_status"] == "active"
 
 
 def test_webhook_ignores_unhandled_event_types(client, monkeypatch):
