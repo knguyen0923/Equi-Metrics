@@ -11,6 +11,9 @@ venv/
 # Editor / OS
 .DS_Store
 
+# Local Claude Code tooling config — machine-specific, not part of the app
+.claude/
+
 # Raw ML training exports (large, not meant for git — see
 # backend/scripts/build_ml_data.py, which trims these into
 # backend/app/ml/data/ which IS committed)

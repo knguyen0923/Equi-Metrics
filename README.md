@@ -1,5 +1,8 @@
 # Equi-Metrics
 
+**Live:** [equi-metrics.vercel.app](https://equi-metrics.vercel.app) ·
+API: [equi-metrics-api.onrender.com/docs](https://equi-metrics-api.onrender.com/docs)
+
 A horse racing prediction platform. Started as a capstone ML project —
 Elo ratings and pedigree features (sire/damsire/dam stats) trained against
 several ranking models (XGBRanker, CatBoost, LightGBM, a tuned neural
