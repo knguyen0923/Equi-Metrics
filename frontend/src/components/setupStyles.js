@@ -49,8 +49,8 @@ export const ghostButtonStyle = {
   color: "var(--text-muted)",
 };
 
-// A bordered, secondary-emphasis action button — the "Populate Random"/
-// "Populate Class 1" quick-fill buttons next to the horse search bar.
+// A bordered, secondary-emphasis action button — the "Random Horse"/
+// "Random Strong Horse" quick-fill buttons next to the horse search bar.
 // Deliberately not the bright orange .form-grid button style, since these
 // are convenience shortcuts, not the primary "Run Simulation" action.
 export const secondaryButtonStyle = {

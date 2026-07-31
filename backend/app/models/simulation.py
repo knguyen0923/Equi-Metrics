@@ -35,6 +35,11 @@ class HorseProfile(BaseModel):
     jockey: Optional[str] = None
     trainer: Optional[str] = None
     officialRating: Optional[float] = None
+    # The class of this horse's most-recent race (what "Populate Class 1"
+    # actually filters on) — surfaced so the frontend can show *why* a
+    # populated horse was picked, instead of every add looking identical
+    # regardless of which populate button added it.
+    raceClass: Optional[str] = None
 
 
 class CustomRaceRequest(BaseModel):

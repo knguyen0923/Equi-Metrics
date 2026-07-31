@@ -103,6 +103,7 @@ export default function CustomRaceSetup({
                   >
                     <span>{horse.horse}</span>
                     <span style={mutedSmallText}>
+                      {horse.raceClass ? `${horse.raceClass} • ` : ""}
                       last: {horse.lastCourse} — {horse.lastDate}
                     </span>
                   </button>
@@ -113,13 +114,14 @@ export default function CustomRaceSetup({
         </div>
 
         {/* Quick-fill shortcuts: add real horses without searching by name.
-            "Class 1" pulls from each horse's most recent race only, same as
-            every other profile field (see registry.search_horses). */}
+            "Random Strong Horse" pulls from Class 1 (the highest class) of
+            each horse's most recent race only, same as every other profile
+            field (see registry.search_horses). */}
         <button type="button" onClick={onPopulateRandom} style={secondaryButtonStyle}>
-          Populate Random
+          Random Horse
         </button>
         <button type="button" onClick={onPopulateClassOne} style={secondaryButtonStyle}>
-          Populate Class 1
+          Random Strong Horse
         </button>
       </div>
 
@@ -143,7 +145,13 @@ export default function CustomRaceSetup({
               }}
             >
               <span>{horse.horse}</span>
-              <span style={mutedSmallText}>{horse.jockey ? `Jockey: ${horse.jockey}` : ""}</span>
+              <span style={mutedSmallText}>
+                {/* Shows which class this horse actually came from — so a
+                    "Random Strong Horse" pick is visibly distinguishable
+                    from "Random Horse" instead of every added chip looking
+                    identical regardless of which button added it. */}
+                {[horse.raceClass, horse.jockey && `Jockey: ${horse.jockey}`].filter(Boolean).join(" • ")}
+              </span>
               <button
                 type="button"
                 onClick={() => onRemoveHorse(horse.profileId)}

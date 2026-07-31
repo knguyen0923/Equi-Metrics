@@ -98,7 +98,7 @@ export const api = {
   // by name — never scrolling any further into the alphabet no matter how
   // many horses actually matched the search term.
   searchHorses: (search = "") => request(`/simulations/horses?search=${encodeURIComponent(search)}&limit=200`),
-  // Backs the "Populate Random"/"Populate Class 1" quick-fill buttons —
+  // Backs the "Random Horse"/"Random Strong Horse" quick-fill buttons —
   // raceClass is omitted entirely (not sent as an empty param) for the
   // random-only case, since the backend treats a present-but-blank
   // race_class differently from an absent one.

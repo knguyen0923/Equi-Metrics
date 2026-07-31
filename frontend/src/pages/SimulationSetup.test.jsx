@@ -351,13 +351,13 @@ describe("SimulationSetup", () => {
   });
 
   describe("populate buttons", () => {
-    it("Populate Random calls populateHorses with no race class and adds only the first new horse", async () => {
+    it("Random Horse calls populateHorses with no race class and adds only the first new horse", async () => {
       const user = userEvent.setup();
       api.populateHorses.mockResolvedValue(HORSE_OPTIONS);
       renderPage();
       await screen.findByText("Course");
 
-      await user.click(screen.getByRole("button", { name: "Populate Random" }));
+      await user.click(screen.getByRole("button", { name: "Random Horse" }));
 
       expect(api.populateHorses).toHaveBeenCalledWith({ raceClass: undefined, limit: 20 });
       // One click adds exactly one horse — the first candidate returned —
@@ -367,13 +367,13 @@ describe("SimulationSetup", () => {
       expect(screen.queryByText("Bailly's Comet (GB)")).not.toBeInTheDocument();
     });
 
-    it("Populate Class 1 calls populateHorses with raceClass set to Class 1", async () => {
+    it("Random Strong Horse calls populateHorses with raceClass set to Class 1", async () => {
       const user = userEvent.setup();
       api.populateHorses.mockResolvedValue(HORSE_OPTIONS);
       renderPage();
       await screen.findByText("Course");
 
-      await user.click(screen.getByRole("button", { name: "Populate Class 1" }));
+      await user.click(screen.getByRole("button", { name: "Random Strong Horse" }));
 
       expect(api.populateHorses).toHaveBeenCalledWith({ raceClass: "Class 1", limit: 20 });
       expect(await screen.findByText("Zephyr (AUS)")).toBeInTheDocument();
@@ -389,7 +389,7 @@ describe("SimulationSetup", () => {
       await user.type(horseInput, "zephyr");
       await user.click(await screen.findByText("Zephyr (AUS)"));
 
-      await user.click(screen.getByRole("button", { name: "Populate Random" }));
+      await user.click(screen.getByRole("button", { name: "Random Horse" }));
       // Zephyr is already selected, so the first *new* candidate — Desert
       // Falcon — is the one added, and only that one.
       await waitFor(() => expect(screen.getByText("Desert Falcon (IRE)")).toBeInTheDocument());
@@ -417,7 +417,7 @@ describe("SimulationSetup", () => {
       }
 
       // Every candidate populateHorses would return is already selected.
-      await user.click(screen.getByRole("button", { name: "Populate Class 1" }));
+      await user.click(screen.getByRole("button", { name: "Random Strong Horse" }));
 
       expect(await screen.findByText("No new Class 1 horses to add.")).toBeInTheDocument();
     });
@@ -438,12 +438,12 @@ describe("SimulationSetup", () => {
       await screen.findByText("Course");
 
       for (let i = 1; i <= 18; i++) {
-        await user.click(screen.getByRole("button", { name: "Populate Random" }));
+        await user.click(screen.getByRole("button", { name: "Random Horse" }));
         await screen.findByText(`Horse ${i}`); // field now has i/18
       }
 
       api.populateHorses.mockClear();
-      await user.click(screen.getByRole("button", { name: "Populate Random" }));
+      await user.click(screen.getByRole("button", { name: "Random Horse" }));
 
       expect(
         await screen.findByText("Your field already has the maximum of 18 horses.")

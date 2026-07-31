@@ -328,6 +328,10 @@ def search_horses(
             "jockey": row.runner_jockey,
             "trainer": row.runner_trainer,
             "officialRating": None if row.runner_or == -1 else float(row.runner_or),
+            # "0" is the "unclassified" placeholder excluded from
+            # _RACE_CONTEXT_OPTIONS's own class list — not a real class a
+            # user picked, so it's surfaced as None rather than literal "0".
+            "raceClass": None if row.race_class == "0" else row.race_class,
         }
         for idx, row in latest.iterrows()
     ]

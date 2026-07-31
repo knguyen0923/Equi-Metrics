@@ -26,10 +26,7 @@ def test_search_horses_returns_matching_names_with_usable_profile_ids():
 def test_search_horses_filters_by_race_class():
     results = registry.search_horses(limit=50, race_class="Class 1")
     assert len(results) > 0
-    # HorseProfile doesn't expose race_class, so this checks against the
-    # underlying data directly rather than the returned dicts.
-    profile_ids = {h["profileId"] for h in results}
-    assert (registry._LATEST_HORSE_PROFILES.loc[list(profile_ids), "race_class"] == "Class 1").all()
+    assert all(h["raceClass"] == "Class 1" for h in results)
 
 
 def test_search_horses_random_order_returns_distinct_horses_within_the_limit():
