@@ -40,6 +40,8 @@ const HORSE_OPTIONS = [
   { profileId: 1, horse: "Zephyr (AUS)", lastCourse: "Ayr", lastDate: "2026-05-01", jockey: "A. Rider" },
   { profileId: 2, horse: "Desert Falcon (IRE)", lastCourse: "Bath", lastDate: "2026-05-02", jockey: "B. Rider" },
   { profileId: 3, horse: "Bailly's Comet (GB)", lastCourse: "Ayr", lastDate: "2026-05-03", jockey: "C. Rider" },
+  { profileId: 4, horse: "Silver Arrow (GB)", lastCourse: "Redcar", lastDate: "2026-05-04", jockey: "D. Rider" },
+  { profileId: 5, horse: "Midnight Runner (IRE)", lastCourse: "Bath", lastDate: "2026-05-05", jockey: "E. Rider" },
 ];
 
 const RUN_RESPONSE = {
@@ -139,7 +141,7 @@ describe("SimulationSetup", () => {
     expect(screen.queryByText("Zephyr (AUS)")).not.toBeInTheDocument();
   });
 
-  it("keeps Run Simulation disabled until the race context is complete and 3 horses are added", async () => {
+  it("keeps Run Simulation disabled until the race context is complete and 5 horses are added", async () => {
     const user = userEvent.setup();
     renderPage();
     await screen.findByText("Course");
@@ -149,7 +151,7 @@ describe("SimulationSetup", () => {
 
     await fillCompleteContext(user);
 
-    // Context alone isn't enough — still needs 3 horses.
+    // Context alone isn't enough — still needs 5 horses.
     expect(runButton).toBeDisabled();
 
     const horseInput = screen.getByPlaceholderText("Search horses by name to add to the field...");
@@ -157,10 +159,14 @@ describe("SimulationSetup", () => {
     await user.click(await screen.findByText("Zephyr (AUS)"));
     expect(runButton).toBeDisabled(); // only 1 horse so far
 
-    await user.type(horseInput, "d");
-    await user.click(await screen.findByText("Desert Falcon (IRE)"));
-    await user.type(horseInput, "b");
-    await user.click(await screen.findByText("Bailly's Comet (GB)"));
+    for (const name of ["Desert Falcon (IRE)", "Bailly's Comet (GB)", "Silver Arrow (GB)"]) {
+      await user.type(horseInput, name.slice(0, 3));
+      await user.click(await screen.findByText(name));
+    }
+    expect(runButton).toBeDisabled(); // 4 horses — still one short
+
+    await user.type(horseInput, "mid");
+    await user.click(await screen.findByText("Midnight Runner (IRE)"));
 
     expect(runButton).toBeEnabled();
   });
@@ -248,7 +254,13 @@ describe("SimulationSetup", () => {
     await fillCompleteContext(user);
 
     const horseInput = screen.getByPlaceholderText("Search horses by name to add to the field...");
-    for (const name of ["Zephyr (AUS)", "Desert Falcon (IRE)", "Bailly's Comet (GB)"]) {
+    for (const name of [
+      "Zephyr (AUS)",
+      "Desert Falcon (IRE)",
+      "Bailly's Comet (GB)",
+      "Silver Arrow (GB)",
+      "Midnight Runner (IRE)",
+    ]) {
       await user.type(horseInput, name.slice(0, 3));
       await user.click(await screen.findByText(name));
     }
@@ -262,7 +274,7 @@ describe("SimulationSetup", () => {
       region: "GB",
       surface: "Turf",
       distance_category: "Mile",
-      profile_ids: [1, 2, 3],
+      profile_ids: [1, 2, 3, 4, 5],
     });
     expect(await screen.findByText("Coton Star (FR)")).toBeInTheDocument();
   });
@@ -275,7 +287,13 @@ describe("SimulationSetup", () => {
     await fillCompleteContext(user);
 
     const horseInput = screen.getByPlaceholderText("Search horses by name to add to the field...");
-    for (const name of ["Zephyr (AUS)", "Desert Falcon (IRE)", "Bailly's Comet (GB)"]) {
+    for (const name of [
+      "Zephyr (AUS)",
+      "Desert Falcon (IRE)",
+      "Bailly's Comet (GB)",
+      "Silver Arrow (GB)",
+      "Midnight Runner (IRE)",
+    ]) {
       await user.type(horseInput, name.slice(0, 3));
       await user.click(await screen.findByText(name));
     }
@@ -292,7 +310,13 @@ describe("SimulationSetup", () => {
     await fillCompleteContext(user);
 
     const horseInput = screen.getByPlaceholderText("Search horses by name to add to the field...");
-    for (const name of ["Zephyr (AUS)", "Desert Falcon (IRE)", "Bailly's Comet (GB)"]) {
+    for (const name of [
+      "Zephyr (AUS)",
+      "Desert Falcon (IRE)",
+      "Bailly's Comet (GB)",
+      "Silver Arrow (GB)",
+      "Midnight Runner (IRE)",
+    ]) {
       await user.type(horseInput, name.slice(0, 3));
       await user.click(await screen.findByText(name));
     }
@@ -310,7 +334,13 @@ describe("SimulationSetup", () => {
     await fillCompleteContext(user);
 
     const horseInput = screen.getByPlaceholderText("Search horses by name to add to the field...");
-    for (const name of ["Zephyr (AUS)", "Desert Falcon (IRE)", "Bailly's Comet (GB)"]) {
+    for (const name of [
+      "Zephyr (AUS)",
+      "Desert Falcon (IRE)",
+      "Bailly's Comet (GB)",
+      "Silver Arrow (GB)",
+      "Midnight Runner (IRE)",
+    ]) {
       await user.type(horseInput, name.slice(0, 3));
       await user.click(await screen.findByText(name));
     }
@@ -321,7 +351,7 @@ describe("SimulationSetup", () => {
   });
 
   describe("populate buttons", () => {
-    it("Populate Random calls populateHorses with no race class and adds the returned horses", async () => {
+    it("Populate Random calls populateHorses with no race class and adds only the first new horse", async () => {
       const user = userEvent.setup();
       api.populateHorses.mockResolvedValue(HORSE_OPTIONS);
       renderPage();
@@ -330,9 +360,11 @@ describe("SimulationSetup", () => {
       await user.click(screen.getByRole("button", { name: "Populate Random" }));
 
       expect(api.populateHorses).toHaveBeenCalledWith({ raceClass: undefined, limit: 20 });
+      // One click adds exactly one horse — the first candidate returned —
+      // not the whole candidate pool.
       expect(await screen.findByText("Zephyr (AUS)")).toBeInTheDocument();
-      expect(screen.getByText("Desert Falcon (IRE)")).toBeInTheDocument();
-      expect(screen.getByText("Bailly's Comet (GB)")).toBeInTheDocument();
+      expect(screen.queryByText("Desert Falcon (IRE)")).not.toBeInTheDocument();
+      expect(screen.queryByText("Bailly's Comet (GB)")).not.toBeInTheDocument();
     });
 
     it("Populate Class 1 calls populateHorses with raceClass set to Class 1", async () => {
@@ -358,9 +390,12 @@ describe("SimulationSetup", () => {
       await user.click(await screen.findByText("Zephyr (AUS)"));
 
       await user.click(screen.getByRole("button", { name: "Populate Random" }));
+      // Zephyr is already selected, so the first *new* candidate — Desert
+      // Falcon — is the one added, and only that one.
       await waitFor(() => expect(screen.getByText("Desert Falcon (IRE)")).toBeInTheDocument());
 
       expect(screen.getAllByRole("button", { name: /^Remove Zephyr/ })).toHaveLength(1);
+      expect(screen.queryByText("Bailly's Comet (GB)")).not.toBeInTheDocument();
     });
 
     it("shows a message instead of adding anything when every fetched candidate is already selected", async () => {
@@ -370,7 +405,13 @@ describe("SimulationSetup", () => {
       await screen.findByText("Course");
 
       const horseInput = screen.getByPlaceholderText("Search horses by name to add to the field...");
-      for (const name of ["Zephyr (AUS)", "Desert Falcon (IRE)", "Bailly's Comet (GB)"]) {
+      for (const name of [
+        "Zephyr (AUS)",
+        "Desert Falcon (IRE)",
+        "Bailly's Comet (GB)",
+        "Silver Arrow (GB)",
+        "Midnight Runner (IRE)",
+      ]) {
         await user.type(horseInput, name.slice(0, 3));
         await user.click(await screen.findByText(name));
       }
@@ -383,23 +424,30 @@ describe("SimulationSetup", () => {
 
     it("shows a message instead of fetching anything once the field is already full", async () => {
       const user = userEvent.setup();
-      const SIX_HORSES = Array.from({ length: 6 }, (_, i) => ({
+      // Every click sees the same full pool; only the first not-yet-selected
+      // candidate gets added each time, so 18 clicks fills the field to
+      // exactly the max, one horse per click.
+      const EIGHTEEN_HORSES = Array.from({ length: 18 }, (_, i) => ({
         profileId: i + 1,
         horse: `Horse ${i + 1}`,
         lastCourse: "Ayr",
         lastDate: "2026-05-01",
       }));
-      api.populateHorses.mockResolvedValue(SIX_HORSES);
+      api.populateHorses.mockResolvedValue(EIGHTEEN_HORSES);
       renderPage();
       await screen.findByText("Course");
 
-      await user.click(screen.getByRole("button", { name: "Populate Random" }));
-      await screen.findByText("Horse 6"); // field is now full (6/6)
+      for (let i = 1; i <= 18; i++) {
+        await user.click(screen.getByRole("button", { name: "Populate Random" }));
+        await screen.findByText(`Horse ${i}`); // field now has i/18
+      }
 
       api.populateHorses.mockClear();
       await user.click(screen.getByRole("button", { name: "Populate Random" }));
 
-      expect(await screen.findByText("Your field already has 6 horses.")).toBeInTheDocument();
+      expect(
+        await screen.findByText("Your field already has the maximum of 18 horses.")
+      ).toBeInTheDocument();
       expect(api.populateHorses).not.toHaveBeenCalled();
     });
   });

@@ -11,9 +11,12 @@ import { api } from "../lib/api";
 // backend/app/ml/registry.py) — AdvancedStats uses this to highlight its row.
 const ACTIVE_MODEL = "XGBRanker";
 
-// "Populate Random"/"Populate Class 1" top the field up to this size rather
-// than adding an unbounded pile of horses on repeated clicks.
-const TARGET_FIELD_SIZE = 6;
+// A real race field has to stay within a plausible size — enforced on adds
+// (search and populate alike) rather than only at submit time, so the field
+// simply stops growing once it's full instead of letting Run Simulation
+// silently reject an oversized field.
+const MIN_FIELD_SIZE = 5;
+const MAX_FIELD_SIZE = 18;
 
 export default function SimulationSetup() {
   // --- State for the custom race builder ---
@@ -82,6 +85,10 @@ export default function SimulationSetup() {
 
   function handleAddHorse(horse) {
     if (selectedHorses.some((h) => h.profileId === horse.profileId)) return;
+    if (selectedHorses.length >= MAX_FIELD_SIZE) {
+      setPopulateMessage(`Your field already has the maximum of ${MAX_FIELD_SIZE} horses.`);
+      return;
+    }
     setSelectedHorses([...selectedHorses, horse]);
     setHorseSearchTerm("");
     setHorseOptions([]);
@@ -93,18 +100,15 @@ export default function SimulationSetup() {
 
   async function populateHorses(raceClass) {
     setPopulateMessage("");
-    const needed = TARGET_FIELD_SIZE - selectedHorses.length;
-    if (needed <= 0) {
-      setPopulateMessage(`Your field already has ${TARGET_FIELD_SIZE} horses.`);
+    if (selectedHorses.length >= MAX_FIELD_SIZE) {
+      setPopulateMessage(`Your field already has the maximum of ${MAX_FIELD_SIZE} horses.`);
       return;
     }
     try {
       const candidates = await api.populateHorses({ raceClass, limit: 20 });
-      const fresh = candidates
-        .filter((h) => !selectedHorses.some((s) => s.profileId === h.profileId))
-        .slice(0, needed);
-      if (fresh.length > 0) {
-        setSelectedHorses([...selectedHorses, ...fresh]);
+      const fresh = candidates.find((h) => !selectedHorses.some((s) => s.profileId === h.profileId));
+      if (fresh) {
+        setSelectedHorses([...selectedHorses, fresh]);
       } else {
         setPopulateMessage(raceClass ? `No new ${raceClass} horses to add.` : "No new horses to add.");
       }
@@ -122,7 +126,7 @@ export default function SimulationSetup() {
   }
 
   const contextComplete = Object.values(context).every(Boolean);
-  const canRunCustom = contextComplete && selectedHorses.length >= 3;
+  const canRunCustom = contextComplete && selectedHorses.length >= MIN_FIELD_SIZE;
 
   async function runWithWakeupNotice(fn) {
     setIsSimulating(true);

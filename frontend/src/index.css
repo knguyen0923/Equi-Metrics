@@ -246,6 +246,33 @@ a {
   transform: translateY(-1px);
 }
 
+/* Run Simulation — the page's one primary call-to-action, so it gets the
+   same orange gradient as .form-grid button but full-width and a bit
+   larger, since it previously rendered as an unstyled browser-default
+   button and didn't read as the main action on the page. */
+.run-button {
+  display: block;
+  width: 100%;
+  margin-top: 16px;
+  background: linear-gradient(135deg, var(--orange), var(--orange-light));
+  color: white;
+  border: none;
+  border-radius: 12px;
+  font-weight: 900;
+  font-size: 1.05rem;
+  padding: 16px 18px;
+  transition: transform 0.15s ease, opacity 0.15s ease;
+}
+
+.run-button:hover:not(:disabled) {
+  transform: translateY(-1px);
+}
+
+.run-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 /* Search input (e.g. the horse search in CustomRaceSetup) — previously
    unstyled (plain browser default), so it looked tiny and out of place next
    to the .form-grid inputs above it. Sized a little larger than those since

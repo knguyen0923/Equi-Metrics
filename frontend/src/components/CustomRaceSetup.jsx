@@ -87,7 +87,12 @@ export default function CustomRaceSetup({
             <ul style={dropdownStyle}>
               {horseOptions.map((horse) => (
                 <li key={horse.profileId}>
-                  <button type="button" onClick={() => onAddHorse(horse)} style={dropdownItemStyle}>
+                  <button
+                    type="button"
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => onAddHorse(horse)}
+                    style={dropdownItemStyle}
+                  >
                     <span>{horse.horse}</span>
                     <span style={mutedSmallText}>
                       last: {horse.lastCourse} — {horse.lastDate}
@@ -145,11 +150,11 @@ export default function CustomRaceSetup({
       )}
 
       <p style={{ color: "var(--text-muted)", marginTop: "8px", fontSize: "0.85em" }}>
-        Add at least 3 horses. Each horse's ratings/history come from their own real
+        Add between 5 and 18 horses. Each horse's ratings/history come from their own real
         past races; how they rank against each other is recomputed for this field.
       </p>
 
-      <button onClick={onRunCustomSimulation} disabled={isSimulating || !canRunCustom} style={{ marginTop: "12px" }}>
+      <button className="run-button" onClick={onRunCustomSimulation} disabled={isSimulating || !canRunCustom}>
         {isSimulating ? "Running..." : "Run Simulation"}
       </button>
     </div>
