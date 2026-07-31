@@ -53,7 +53,15 @@ export default function CustomRaceSetup({
             );
           }
           return (
-            <select key={key} value={context[key]} onChange={(e) => onContextChange(key, e.target.value)}>
+            <select
+              key={key}
+              value={context[key]}
+              onChange={(e) => onContextChange(key, e.target.value)}
+              // A required field left empty gets an orange border up front,
+              // rather than the user only discovering it's missing once
+              // Run Simulation silently refuses to enable.
+              style={context[key] ? undefined : { borderColor: "var(--orange)" }}
+            >
               <option value="">{label}</option>
               {optionValues.map((value) => (
                 <option key={value} value={value}>{value}</option>
@@ -149,9 +157,19 @@ export default function CustomRaceSetup({
         </ul>
       )}
 
-      <p style={{ color: "var(--text-muted)", marginTop: "8px", fontSize: "0.85em" }}>
-        Add between 5 and 18 horses. Each horse's ratings/history come from their own real
-        past races; how they rank against each other is recomputed for this field.
+      <p
+        style={{
+          color: selectedHorses.length < 5 ? "var(--orange)" : "var(--text-muted)",
+          marginTop: "8px",
+          fontSize: "0.85em",
+        }}
+      >
+        {selectedHorses.length}/18 horses selected
+        {selectedHorses.length < 5 && ` — add at least ${5 - selectedHorses.length} more to run`}
+      </p>
+      <p style={{ color: "var(--text-muted)", marginTop: "4px", fontSize: "0.85em" }}>
+        Each horse's ratings/history come from their own real past races; how
+        they rank against each other is recomputed for this field.
       </p>
 
       <button className="run-button" onClick={onRunCustomSimulation} disabled={isSimulating || !canRunCustom}>

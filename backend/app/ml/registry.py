@@ -191,7 +191,9 @@ def _results_from_scores(race_df: pd.DataFrame, scores: np.ndarray) -> list[Hors
     exp_scores = np.exp(scores - np.max(scores))
     win_probabilities = exp_scores / exp_scores.sum()
 
-    order = np.argsort(-scores)[:3]
+    # Every horse in the field, ranked — not just the top finishers — so
+    # History's per-race breakdown can show the whole field, not a podium.
+    order = np.argsort(-scores)
 
     results = []
     for rank, idx in enumerate(order, start=1):
@@ -202,6 +204,11 @@ def _results_from_scores(race_df: pd.DataFrame, scores: np.ndarray) -> list[Hors
         # "1-10" near-favorite instead of "—".
         sp_dec = row["runner_sp_dec"]
         odds = _decimal_to_fractional(sp_dec) if pd.notna(sp_dec) and sp_dec > 0 else "—"
+        # Same optional-field conventions as search_horses: NaN age and the
+        # -1 "no official rating" sentinel both become None rather than a
+        # fabricated 0.
+        age = row.get("runner_age")
+        official_rating = row.get("runner_or")
         results.append(
             HorseResult(
                 rank=rank,
@@ -210,6 +217,10 @@ def _results_from_scores(race_df: pd.DataFrame, scores: np.ndarray) -> list[Hors
                 probability=int(round(win_probabilities[idx] * 100)),
                 odds=odds,
                 model="XGBRanker",
+                age=None if pd.isna(age) else float(age),
+                jockey=row.get("runner_jockey"),
+                trainer=row.get("runner_trainer"),
+                officialRating=None if official_rating is None or official_rating == -1 else float(official_rating),
             )
         )
     return results

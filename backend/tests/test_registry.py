@@ -88,6 +88,31 @@ def test_predict_custom_returns_ranked_results_for_a_real_field_of_horses():
     )
 
 
+def test_predict_custom_returns_every_horse_in_a_larger_field_not_just_the_top_three():
+    context = _sample_context()
+    profile_ids = _sample_profile_ids(8)
+
+    results = registry.predict_custom(context, profile_ids)
+
+    assert len(results) == 8
+    assert sorted(r.rank for r in results) == list(range(1, 9))
+    assert sorted(r.predictedRank for r in results) == list(range(1, 9))
+
+
+def test_predict_custom_results_carry_each_horses_profile_stats():
+    context = _sample_context()
+    profile_ids = _sample_profile_ids(3)
+
+    results = registry.predict_custom(context, profile_ids)
+
+    # These mirror HorseProfile/search_horses — every result is seeded from
+    # a real horse's own profile row, so the same fields should carry over.
+    assert all(hasattr(r, "jockey") for r in results)
+    assert all(hasattr(r, "trainer") for r in results)
+    assert all(hasattr(r, "age") for r in results)
+    assert all(hasattr(r, "officialRating") for r in results)
+
+
 def test_predict_custom_requires_at_least_three_horses():
     context = _sample_context()
     with pytest.raises(ValueError):

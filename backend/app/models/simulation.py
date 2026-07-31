@@ -54,13 +54,21 @@ class CustomRaceRequest(BaseModel):
 
 
 class HorseResult(BaseModel):
-    # One ranked horse in a simulation's results.
+    # One ranked horse in a simulation's results — every horse in the field,
+    # not just the top finishers, so History's per-race breakdown can show
+    # the whole field. age/jockey/trainer/officialRating mirror HorseProfile
+    # since they come from the same underlying profile row (see
+    # app/ml/registry.py's _results_from_scores).
     rank: int
     horse: str
     predictedRank: int
     probability: int
     odds: str
     model: str
+    age: Optional[float] = None
+    jockey: Optional[str] = None
+    trainer: Optional[str] = None
+    officialRating: Optional[float] = None
 
 
 class SimulationRunResponse(BaseModel):

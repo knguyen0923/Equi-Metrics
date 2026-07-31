@@ -1,5 +1,7 @@
 // `data` is the array of ranked horses from a simulation run, or null if
-// none has run yet.
+// none has run yet. Rendered as a racecard — one row per runner, in
+// predicted finishing order — rather than a card grid, since a real field
+// can now run up to 18 horses (see SimulationSetup.jsx's MAX_FIELD_SIZE).
 export default function Results({ data }) {
   return (
     <section className="results-section">
@@ -18,36 +20,51 @@ export default function Results({ data }) {
           <p>Please configure and run a simulation to view predicted outcomes.</p>
         </div>
       ) : (
-        <div className="results-grid">
-          {data.map((horse) => (
-            <article className="result-card" key={horse.horse}>
-              <div className="result-rank">#{horse.rank}</div>
+        <div className="race-card">
+          <div className="race-card-header">
+            <span>Pos</span>
+            <span>Runner</span>
+            <span>Win %</span>
+            <span>Odds</span>
+          </div>
 
-              <div>
-                <h3>{horse.horse}</h3>
-                <p>Model: {horse.model}</p>
-              </div>
+          {data.map((horse) => {
+            const isWinner = horse.rank === 1;
+            const details = [
+              horse.jockey,
+              horse.trainer,
+              horse.age != null ? `Age ${horse.age}` : null,
+              horse.officialRating != null ? `OR ${horse.officialRating}` : null,
+            ].filter(Boolean);
 
-              <div className="probability-bar">
-                <span style={{ width: `${horse.probability}%` }}></span>
-              </div>
+            return (
+              <article
+                className={`race-card-row${isWinner ? " race-card-row--winner" : ""}`}
+                key={horse.horse}
+              >
+                <div className={`race-card-badge${isWinner ? " race-card-badge--winner" : ""}`}>
+                  {horse.rank}
+                </div>
 
-              <div className="result-meta">
-                <p>
+                <div className="race-card-runner">
+                  <h3>
+                    {horse.horse}
+                    {isWinner && <span className="race-card-tag">Predicted winner</span>}
+                  </h3>
+                  {details.length > 0 && <p className="race-card-subline">{details.join(" • ")}</p>}
+                </div>
+
+                <div className="race-card-probability">
+                  <div className="probability-bar">
+                    <span style={{ width: `${horse.probability}%` }}></span>
+                  </div>
                   <strong>{horse.probability}%</strong>
-                  <span>Win probability</span>
-                </p>
-                <p>
-                  <strong>{horse.odds}</strong>
-                  <span>Odds</span>
-                </p>
-                <p>
-                  <strong>{horse.predictedRank}</strong>
-                  <span>Predicted rank</span>
-                </p>
-              </div>
-            </article>
-          ))}
+                </div>
+
+                <div className="race-card-odds">{horse.odds}</div>
+              </article>
+            );
+          })}
         </div>
       )}
     </section>
