@@ -163,5 +163,29 @@ describe("Account", () => {
 
       expect(await screen.findByText("Billing is not configured on this server")).toBeInTheDocument();
     });
+
+    it("tells a free-tier user upgrading doesn't unlock anything yet, and lists the roadmap models", () => {
+      useAuth.mockReturnValue({ user: { email: "rider@example.com", tier: "free" }, loading: false });
+      renderAccount();
+
+      expect(
+        screen.getByText(/It changes your account to Pro, but doesn't unlock anything extra yet/)
+      ).toBeInTheDocument();
+      expect(screen.getByText("Coming soon to Pro")).toBeInTheDocument();
+      expect(screen.getByText("Random Forest")).toBeInTheDocument();
+      expect(screen.getByText("LightGBM Ranker")).toBeInTheDocument();
+      expect(screen.getByText("CatBoost Ranker")).toBeInTheDocument();
+      expect(screen.getByText("Neural Network Ranker")).toBeInTheDocument();
+    });
+
+    it("tells a paid-tier user their subscription doesn't unlock anything yet either", () => {
+      useAuth.mockReturnValue({ user: { email: "rider@example.com", tier: "paid" }, loading: false });
+      renderAccount();
+
+      expect(
+        screen.getByText(/Your subscription is real .* It doesn't unlock anything extra yet/)
+      ).toBeInTheDocument();
+      expect(screen.getByText("Coming soon to Pro")).toBeInTheDocument();
+    });
   });
 });

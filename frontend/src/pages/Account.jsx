@@ -86,6 +86,39 @@ export default function Account() {
               </p>
             )}
             {billingError && <p style={{ color: 'var(--orange)', fontSize: '0.85rem' }}>{billingError}</p>}
+            {/* Upgrading is a real Stripe subscription (sandbox/test mode
+                right now), but no route actually gates any feature behind
+                tier yet (see require_tier in backend/app/security.py) — this
+                says so plainly instead of leaving "Upgrade" to imply
+                something it doesn't do yet. */}
+            <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>
+              {user.tier === 'free'
+                ? "Upgrading is a real subscription (test-mode Stripe right now — no real charge). It changes your account to Pro, but doesn't unlock anything extra yet: every account runs the same prediction model today."
+                : "Your subscription is real (test-mode Stripe right now — no real charge). It doesn't unlock anything extra yet: every account runs the same prediction model today."}
+            </p>
+            <div
+              style={{
+                textAlign: 'left',
+                marginTop: '10px',
+                marginBottom: '14px',
+                border: '1px solid var(--border)',
+                borderRadius: 'var(--radius-md)',
+                padding: '12px 16px',
+              }}
+            >
+              <p style={{ margin: 0, color: 'var(--text-main)', fontWeight: 700, fontSize: '0.85rem' }}>
+                Coming soon to Pro
+              </p>
+              <p style={{ margin: '4px 0 8px', color: 'var(--text-muted)', fontSize: '0.8rem' }}>
+                We've already trained and evaluated these models — Pro access to run them is on the roadmap:
+              </p>
+              <ul style={{ margin: 0, paddingLeft: '20px', color: 'var(--text-muted)', fontSize: '0.8rem' }}>
+                <li>Random Forest</li>
+                <li>LightGBM Ranker</li>
+                <li>CatBoost Ranker</li>
+                <li>Neural Network Ranker</li>
+              </ul>
+            </div>
             <button type="button" onClick={handleBillingClick} disabled={billingSubmitting}>
               {billingSubmitting ? 'Please wait...' : user.tier === 'free' ? 'Upgrade' : 'Manage Subscription'}
             </button>
